@@ -83,6 +83,7 @@ def format_header(dhas):
         names = ['_'.join([i.resname(), str(i.resid()), i.name()]) for i in x]
         retlist.append('-'.join(names))
     retlist.append('total_inframe')
+    retlist.append('ratio_inframe')
     return '\t'.join(retlist) + '\n'
 
 parser = argparse.ArgumentParser()
@@ -155,6 +156,9 @@ for i in acceptors:
 # can't append to np arrays so array this after constructiion.
 ref_dhas = np.array(ref_dhas)
 
+# Get the total HBs we're looking for for summarized output to stdout.
+number_native_hbs = len(ref_dhas)
+
 # read in the traj
 traj = loos.pyloos.VirtualTrajectory(skip=args.skip, stride=args.stride)
 for trajname in args.traj:
@@ -179,7 +183,8 @@ if args.outfile:
                     outform.append(1) # add a 1 to the row and column you're on in outfile
                 else:
                     outform.append(0) # didn't find an HB so add a zero to row in outfile
-            outform.append(total_inframe) # add last column to outfile
+            outform.append(total_inframe) # add to total column in this row
+            outform.append(total_inframe/float(number_native_hbs)) # hbs observed to native hbs found
             outfile.write('\t'.join(map(str,outform)) + '\n') # write tab delim row to outfile
 else: # same as above, but don't write outfiles since they weren't asked for if  youre here
     for frame in traj:
@@ -191,6 +196,6 @@ else: # same as above, but don't write outfiles since they weren't asked for if 
 
 # Calculate average, print frames, total, and average.
 average_hbs = total_hbs/float(frame_count)
-print frame_count, total_hbs, average_hbs
+print frame_count, total_hbs, number_native_hbs, average_hbs, average_hbs/number_native_hbs
 
 
