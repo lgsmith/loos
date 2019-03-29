@@ -11,6 +11,7 @@ loos.py
 loos/__init__.py
 setup.sh
 setup.csh
+custom.py
 
 # Library files
 *.so
@@ -40,17 +41,26 @@ GTAGS
 
 # JSON files used for atom
 .*.json
+.clang_complete
+
+# cruft from vscode
+.vscode
+.vscode/*
+**.vscode
 
 # Vi cruft
 *.swp
 
-# vscode cruft
-.vscode 
+
+# VSCode cruft
+**.vscode
 
 # JSON files
 .*.json
 
 ###EXES
+
+Tools/rms-overlap
 Tools/verap
 Tools/renum-pdb
 Tools/merge-traj

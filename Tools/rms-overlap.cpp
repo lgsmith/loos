@@ -68,43 +68,96 @@ bool report_stats = false;
 
 string fullHelpMessage(void) {
   string msg =
-    "\n"
-    "SYNOPSIS\n"
-    "\n"
-    "\tCalculate the RMSD between frame pairs from two different sets of trajectories.\n"
-    "DESCRIPTION\n"
-    "\n"
-    "\tThis tool calculates the pair-wise RMSD between\n"
-    "each frame pair from two sets of multi-trajectories.  jth structure from set B and the RMSD calculated.\n"
-    "This is stored in a matrix, i.e. R(i, j) = d(A_i, B_j).  While there is only a .\n"
-    "\n"
-    "\tThe requested subset for each frame is cached in memory for better performance.\n"
-    "If the memory used by the cache gets too large, your machine may swap and dramatically slow\n"
-    "down.  The tool will try to warn you if this is a possibility.  To use less memory, subsample\n"
-    "the trajectory by using --skip or --stride, or use subsetter to pre-process the trajectory.\n"
-    "\n"
-    "\tThis tool can be run in parallel with multiple threads for performance.  The --threads option\n"
-    "controls how many threads are used.  The default is 1 (non-parallel).  Setting it to 0 will use\n"
-    "as many threads as possible.  Note that if LOOS was built using a multi-threaded math library,\n"
-    "then some care should be taken in how many threads are used for this tool, though it is unlikely\n"
-    "that there will be a conflict.\n"
-    "\n"
-    "EXAMPLES\n"
-    "\n"
-    "\tmulti-rmsds model.pdb sim1.dcd sim2.dcd sim3.dcd >rmsd.asc\n"
-    "This example uses all alpha-carbons and every frame from each trajectory.\n"
-    "\n"
-    "\tmulti-rmsds --threads=8 model.pdb sim1.dcd sim2.dcd sim3.dcd >rmsd.asc\n"
-    "This example uses all alpha-carbons and every frame in the trajectories, run\n"
-    "in parallel with 8 threads of execution.\n"
-    "\n"
-    "\tmulti-rmsds --selection backbone --skip=50 --stride=10 model.pdb sim1.dcd sim2.dcd sim3.dcd >rmsds.asc\n"
-    "This example uses the backbone atoms, and skips the first 50 frames from each trajectory,\n"
-    "and only takes every 10th subsequent frame from each trajectory.\n"
-    "\n"
-    "SEE ALSO\n"
-    "\trmsds, rmsd2ref, multi-rmsds\n"
-    "\n";
+    "SYNOPSIS \n"
+" \n"
+"Calculate the RMSD between all pairs of frames from two different sets of \n"
+"trajectories. \n"
+" \n"
+"DESCRIPTION \n"
+" \n"
+"This tool calculates the pair-wise RMSD between each frame pair from two sets \n"
+"of multi-trajectories. The jth structure from set B and the ith structure from \n"
+"set A are aligned, then the RMSD is calculated. This is stored in a matrix, \n"
+"i.e. R(j, i) = d(S_i, S_j).  The block-structure is indicative of sets of \n"
+"similar conformations. The matrix is not diagonal unless one or more of the \n"
+"trajectories in set A matches one or more of the trajectories in set B (in \n"
+"which case that section of the outputted matrix will match what other all-to-\n"
+"all rmsd tools would return for that trajectory or trajectories alone). The \n"
+"presence (or lack thereof) of multiple cross-peaks is diagnostic of the \n"
+"sampling quality of a simulation.  Cross-peaks between sub-blocks indicates \n"
+"similar conformations in multiple trajectories. This tool is particularly \n"
+"useful for comparing trajectories representing the same system at different \n"
+"positions along a reaction coordinate. \n"
+" \n"
+"The requested subset for each frame is cached in memory for better performance.\n"
+" If the memory used by the cache gets too large, your machine may swap and \n"
+"dramatically slowdown.  The tool will try to warn you if this is a possibility.\n"
+" To use less memory, subsample the trajectory by using --skip or --stride, or \n"
+"use subsetter to pre-process the trajectory. Be wary of writing selection \n"
+"strings that could conceivably include many atoms (such as solvent atoms) for a\n"
+" trajectory, as in addition to being expensive it will also produce confusing \n"
+"and incoherent results.  \n"
+" \n"
+"If subsetter is used to pre-process trajectories to a subset of atoms that \n"
+"match over trajectories originally created with different systems, they can \n"
+"then be analyzed for similarities in that subset using this tool with some \n"
+"additional ease, since trajectories of one time can be kept in set A and \n"
+"trajectories of the other type can be kept in set B. Expanding this to more \n"
+"types can be done pairwise, although there is some point where the \n"
+"combinatorics and the postprocessing requirements may make this not worth it.  \n"
+" \n"
+"This tool can be run in parallel with multiple threads for performance. The \n"
+"--threads option controls how many threads are used.  The default is 1 (non-\n"
+"parallel).  Setting it to 0 will use as many threads as possible.  Note that if\n"
+" LOOS was built using a multi-threaded math library,then some care should be \n"
+"taken in how many threads are used for this tool, though it is unlikely that \n"
+"there will be a conflict. \n"
+" \n"
+"This tool can compute some basic statistics about the matrix produced, and can \n"
+"also be asked not to return it, for convenience in certain situations (they can\n"
+" be very large if comparisons are being made between many trajectories and/or \n"
+"many frames). If stats are requested but no cutoff is give, then the program \n"
+"calculates the maximum distance between any two frames, as well as the average.\n"
+" If a cutoff is given, then the maximum, average, and variance are reported. \n"
+"The number of frames below the given cutoff is also reported, along with a \n"
+"total number of frames compared (so that one might calculate a 'fractional \n"
+"overlap' using these values). \n"
+" \n"
+"EXAMPLES     \n"
+" \n"
+"rms-overlap --set-A sysA.sim1.dcd sysA.sim2.dcd --set-B sysB.sim3.dcd \\\n"
+"sysB.sim4.dcd model.pdb > rmsd.asc \n"
+" \n"
+"This example uses all backbone heavy atoms and every frame from each trajectory\n"
+" in set A to compare to every frame in set B.  \n"
+" \n"
+"rms-overlap --threads=8 --set-A sysA.sim1.dcd sysA.sim2.dcd --set-B \\\n"
+"sysB.sim3.dcd sysB.sim4.dcd model.pdb > rmsd.asc \n"
+" \n"
+"This example uses all backbone heavy atoms and every frame in the trajectories,\n"
+" run in parallel with 8 threads of execution.   \n"
+" \n"
+"rms-overlap --selection backbone --skip=50 --stride=10 --set-A sysA.sim1.dcd \\\n"
+"sysA.sim2.dcd --set-B sysB.sim3.dcd sysB.sim4.dcd model.pdb > rmsd.asc \n"
+"This example uses the backbone atoms, and skips the first 50 frames from each \n"
+"trajectory,and only takes every 10th subsequent frame from each trajectory. \n"
+" \n"
+"rms-overlap -c 2.5 -N 1 -A sysA.sim1.dcd sysA.sim2.dcd sysA.sim3.dcd -B \\\n"
+"sysB.sim1.dcd sysB.sim2.dcd model.pdb > stats.out \n"
+" \n"
+"This example will compute the RMSDs between all frames in set A and all frames \n"
+"in set B, but will not write the matrix out to stdout. It will calculate the \n"
+"statistics described in the cutoff section above, then write them to stdout \n"
+"where they are redirected to stats.out. \n"
+" \n"
+" \n"
+" \n"
+"SEE ALSO  \n"
+" \n"
+"rmsds, rmsd2ref \n"
+" \n"
+"Usage- rms-overlap [options] model \n"
+;
 
   return(msg);
 }
@@ -131,13 +184,12 @@ public:
   void addHidden(po::options_description& opts) {
     opts.add_options()
       ("model", po::value<std::string>(&model_name), "Model filename");
-      //("traj", po::value< std::vector< std::string > >(&traj_names), "Trajectory filenames");
   }
 
   void addPositional(po::positional_options_description& pos) {
     pos.add("model", 1);
-    //pos.add("traj_names", -1)
   }
+
   bool check(po::variables_map& map) {
     return( model_name.empty() || set_A.empty() || set_B.empty());
   }
@@ -417,7 +469,7 @@ void showStats(const RealMatrix& R) {
   cerr << boost::format("Max rmsd = %.4f, avg rmsd = %.4f\n") % max % avg;
 }
 
-void showFractionalStats(const RealMatrix& R, const float cutoff) {
+void showFractionalStats(const RealMatrix& R, const float cutoff, const bool isNoop) {
   uint total = R.size(); 
 
   double avg = 0.0;
@@ -442,15 +494,27 @@ void showFractionalStats(const RealMatrix& R, const float cutoff) {
     
   avg /= total;
   var = var/total - avg*avg;
-  cerr << boost::format("Max rmsd = %.4f between frames %d, %d, avg rmsd = %.4f, variance = %.4f, frames below %.4f = %d, total = %d\n") 
-  % boost::get<2>(max) 
-  % boost::get<0>(max)
-  % boost::get<1>(max)
-  % avg 
-  % var 
-  % cutoff 
-  % below_cut
-  % total;
+  if (isNoop){
+    cout << boost::format("Max rmsd = %.4f between frames %d, %d, avg rmsd = %.4f, variance = %.4f, frames below %.4f = %d, total = %d\n") 
+      % boost::get<2>(max) 
+      % boost::get<0>(max)
+      % boost::get<1>(max)
+      % avg 
+      % var 
+      % cutoff 
+      % below_cut
+      % total;
+  } else {
+    cerr << boost::format("Max rmsd = %.4f between frames %d, %d, avg rmsd = %.4f, variance = %.4f, frames below %.4f = %d, total = %d\n") 
+      % boost::get<2>(max) 
+      % boost::get<0>(max)
+      % boost::get<1>(max)
+      % avg 
+      % var 
+      % cutoff 
+      % below_cut
+      % total;
+  }
 }
 
 
@@ -488,7 +552,7 @@ int main(int argc, char *argv[]) {
   string header = invocationHeader(argc, argv);
   
   opts::BasicOptions* bopts = new opts::BasicOptions(fullHelpMessage());
-  opts::BasicSelection* sopts = new opts::BasicSelection("name == 'CA'");
+  opts::BasicSelection* sopts = new opts::BasicSelection("name == 'backbone' && ! hydrogen");
   ToolOptions* topts = new ToolOptions;
 
   opts::AggregateOptions options;
@@ -536,7 +600,7 @@ int main(int argc, char *argv[]) {
 
   if (verbosity || topts->noop || topts->stats || topts->cutoff > 0){
     if (topts->cutoff > 0)
-      showFractionalStats(M, topts->cutoff);
+      showFractionalStats(M, topts->cutoff, topts->noop);
     else
       showStats(M);
   }
