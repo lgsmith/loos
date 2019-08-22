@@ -6,6 +6,15 @@ using namespace std;
 using namespace loos;
 using namespace ::boost::tuples;
 
+namespace opts = loos::OptionsFramework;
+namespace po = loos::OptionsFramework::po;
+
+string fullHelpMessage(void) {
+  string msg =
+    "\nNothing here yet\n";
+  return(msg);
+}
+
 typedef tuple<pAtom,pAtom,double> AtomPair;
 
 bool cmpAtomPairs(const AtomPair &a1, const AtomPair &a2)
@@ -17,15 +26,23 @@ int main (int argc, char *argv[])
 {
 
 cout << "# " << invocationHeader(argc, argv) << endl;
+opts::BasicOptions* bopts = new opts::BasicOptions(fullHelpMessage());
+opts::MultiTrajOptions* mtopts = new opts::MultiTrajOptions;
+opts::BasicSelection* sopts = new opts::BasicSelection("all");
 
-char *system_filename = argv[1];
-char *traj_filename = argv[2];
-char *selection_string = argv[3];
+opts::AggregateOptions options;
+options.add(bopts).add(sopts).add(mtopts);
+if (!options.parse(argc, argv))
+    exit(-1);
 
-AtomicGroup system = createSystem(system_filename);
-pTraj traj = createTrajectory(traj_filename, system);
+//char *system_filename = argv[1];
+//char *traj_filename = argv[2];
+//char *selection_string = argv[3];
 
-AtomicGroup molecule = selectAtoms(system, selection_string);
+AtomicGroup system = mtopts->model;
+pTraj traj = mtopts->trajectory;
+
+AtomicGroup molecule = selectAtoms(system, sopts->selection);;
 AtomicGroup hydrogens = molecule.select(HydrogenSelector());
 cout << "# Number of hydrogens = " << hydrogens.size() << endl; 
 
