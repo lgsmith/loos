@@ -89,6 +89,7 @@ int main(int argc, char *argv[])
         //       structural transitions
         // Here incorporate frame weight as numerator of 1/r^6
         get<2>(*p) += wopts->weights() / (d2 * d2 * d2);
+        wopts->weights.accumulate();
       }
 
       frame++;
@@ -129,10 +130,15 @@ int main(int argc, char *argv[])
   {
     pAtom a1 = get<0>(*p);
     pAtom a2 = get<1>(*p);
-
-    double val = get<2>(*p) / frame;
+    
+    double val;
+    if (wopts->has_weights){
+      val = get<2>(*p) / wopts->weights.totalWeight();
+    }
+    else {
+      val = get<2>(*p) / frame;
+    }
     double val6 = pow(1 / val, 1 / 6.);
-
     if (val > threshold)
     {
       cout << val << "\t" << val6 << "\t"
