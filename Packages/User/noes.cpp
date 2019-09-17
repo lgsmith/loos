@@ -67,12 +67,14 @@ int main(int argc, char *argv[])
   cout << "# Number of pairs = " << hydrogen_pairs.size() << endl;
   // track frame count for ranking after traj loop if no weights
   uint frame = 0;
+  vector<uint> indices = mtopts->frameList();
   if (wopts->has_weights)
   {
     wopts->weights.add_traj(traj);
 
-    while (traj->readFrame())
+    for (vector<uint>::iterator i = indices.begin(); i != indices.end(); ++i)
     {
+      traj->readFrame(*i);
       traj->updateGroupCoords(system);
 
       for (vector<AtomPair>::iterator p = hydrogen_pairs.begin();
@@ -96,8 +98,9 @@ int main(int argc, char *argv[])
   }
   else
   { // If there are no frame weights, don't worry about reweighting in calx.
-    while (traj->readFrame())
+    for (vector<uint>::iterator i = indices.begin(); i != indices.end(); ++i)
     {
+      traj->readFrame(*i);
       traj->updateGroupCoords(system);
 
       for (vector<AtomPair>::iterator p = hydrogen_pairs.begin();
@@ -123,7 +126,7 @@ int main(int argc, char *argv[])
 
   const double threshold = 1. / (8 * 8 * 8 * 8 * 8 * 8);
   // print a header for the output
-  cout << "# vol    mean_r  resname resid name  index resname resid name  index" << endl;
+  cout << "# vol    mean_r  resname resid name  index resname resid name  index";
   for (vector<AtomPair>::reverse_iterator p = hydrogen_pairs.rbegin();
        p != hydrogen_pairs.rend();
        ++p)
@@ -143,14 +146,12 @@ int main(int argc, char *argv[])
     double val6 = pow(1 / val, 1 / 6.);
     if (val > threshold)
     {
-      cout << val << "\t" << val6 << "\t"
+      cout << endl << val << "\t" << val6 << "\t"
            << a1->resname() << "\t" << a1->resid() << "\t" << a1->name() << "\t"
            << a1->index()
            << "\t"
-           << a2->resname() << "\t" << a2->resid() << "\t" << a2->name()
-           << a2->index()
-           << "\t"
-           << endl;
+           << a2->resname() << "\t" << a2->resid() << "\t" << a2->name() << "\t"
+           << a2->index();
     }
   }
 }
