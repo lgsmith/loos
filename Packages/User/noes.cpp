@@ -65,7 +65,7 @@ int main(int argc, char *argv[])
     }
   }
   cout << "# Number of pairs = " << hydrogen_pairs.size() << endl;
-  // track frame count for ranking after traj loop.
+  // track frame count for ranking after traj loop if no weights
   uint frame = 0;
   if (wopts->has_weights)
   {
@@ -89,10 +89,9 @@ int main(int argc, char *argv[])
         //       structural transitions
         // Here incorporate frame weight as numerator of 1/r^6
         get<2>(*p) += wopts->weights() / (d2 * d2 * d2);
-        wopts->weights.accumulate();
       }
-
-      frame++;
+      // Track the amount of weight used, rather than the frameno
+      wopts->weights.accumulate();
     }
   }
   else
@@ -123,30 +122,33 @@ int main(int argc, char *argv[])
   sort(hydrogen_pairs.begin(), hydrogen_pairs.end(), &cmpAtomPairs);
 
   const double threshold = 1. / (8 * 8 * 8 * 8 * 8 * 8);
-
+  // print a header for the output
+  cout << "# vol    mean_r  resname resid name  index resname resid name  index" << endl;
   for (vector<AtomPair>::reverse_iterator p = hydrogen_pairs.rbegin();
        p != hydrogen_pairs.rend();
        ++p)
   {
     pAtom a1 = get<0>(*p);
     pAtom a2 = get<1>(*p);
-    
+
     double val;
-    if (wopts->has_weights){
+    if (wopts->has_weights)
+    {
       val = get<2>(*p) / wopts->weights.totalWeight();
     }
-    else {
+    else
+    {
       val = get<2>(*p) / frame;
     }
     double val6 = pow(1 / val, 1 / 6.);
     if (val > threshold)
     {
       cout << val << "\t" << val6 << "\t"
-           << a1->resname() << a1->resid() << ":" << a1->name() << "\t"
-           << " ( " << a1->index() << " ) "
+           << a1->resname() << "\t" << a1->resid() << "\t" << a1->name() << "\t"
+           << a1->index()
            << "\t"
-           << a2->resname() << a2->resid() << ":" << a2->name()
-           << " ( " << a2->index() << " ) "
+           << a2->resname() << "\t" << a2->resid() << "\t" << a2->name()
+           << a2->index()
            << "\t"
            << endl;
     }
