@@ -124,7 +124,7 @@ int main(int argc, char *argv[])
   // sort into ascending order by noe amplitude
   sort(hydrogen_pairs.begin(), hydrogen_pairs.end(), &cmpAtomPairs);
 
-  const double threshold = 1. / (8 * 8 * 8 * 8 * 8 * 8);
+  // const double threshold = 1. / (8 * 8 * 8 * 8 * 8 * 8);
   // print a header for the output
   cout << "# vol    mean_r  resname resid name  index resname resid name  index";
   for (vector<AtomPair>::reverse_iterator p = hydrogen_pairs.rbegin();
@@ -144,14 +144,14 @@ int main(int argc, char *argv[])
       val = get<2>(*p) / frame;
     }
     double val6 = pow(1 / val, 1 / 6.);
-    if (val > threshold)
-    {
-      cout << endl << val << "\t" << val6 << "\t"
-           << a1->resname() << "\t" << a1->resid() << "\t" << a1->name() << "\t"
-           << a1->index()
-           << "\t"
-           << a2->resname() << "\t" << a2->resid() << "\t" << a2->name() << "\t"
-           << a2->index();
-    }
+    // if (val > threshold)
+    // {
+    cout << endl << val << "\t" << val6 << "\t"
+          << a1->resname() << "\t" << a1->resid() << "\t" << a1->name() << "\t"
+          << a1->index()
+          << "\t"
+          << a2->resname() << "\t" << a2->resid() << "\t" << a2->name() << "\t"
+          << a2->index();
+    // }
   }
 }

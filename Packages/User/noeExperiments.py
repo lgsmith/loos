@@ -20,7 +20,7 @@ class Noe:
 
 
 class NoeExperiment:
-    def __init__(self, noe_list: List[Noe], pairs: dict = {}, meta: List[str] = []):
+    def __init__(self, noe_list: List[Noe], pairs: dict = None, meta: List[str] = None):
         self.list = noe_list
         self.pairs = pairs
         self.meta = meta
@@ -56,10 +56,13 @@ class NoeExperiment:
                     noe_list.append(Noe(float(l[0]), float(l[1]), pair))
         return cls(noe_list=noe_list, meta=meta)
 
+    # critical not to use default arguments of mutables in class.
     def lookup_pairs(self, key_pattern=["resname", "resid", "name"]):
+        pairs = dict()
         for noe in self.list:
             key = tuple(at[k] for at in noe.pair for k in key_pattern)
-            self.pairs[key] = noe
+            pairs[key] = noe
+        self.pairs = pairs
 
     # save this NoeExperiment to this filename
     def save(self, filename):
