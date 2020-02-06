@@ -1,7 +1,7 @@
 /*
   internuclear-vector-corr-projections
-  Writes the z projection of all selected internuclear vectors out as a timeseries,
-  Optionally finding each autocorrelation as well.
+  Writes the z projection of all selected internuclear vectors out as a
+  timeseries, Optionally finding each autocorrelation as well.
 */
 
 /*
@@ -25,26 +25,27 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "Packages/Clustering/Clustering.hpp"
 #include "loos.hpp"
 #include <eigen3/Eigen/Dense>
 
-
 using namespace std;
 using namespace loos;
+using namespace eigen;
 
 namespace opts = loos::OptionsFramework;
 namespace po = loos::OptionsFramework::po;
 
+const string fullHelpMsg = "XXX";
 
 // @cond TOOLS_INTERNAL
 class ToolOptions : public opts::OptionsPackage {
 public:
-
   // clang-format off
   void addGeneric(po::options_description& o) {
     o.add_options()
       ("no-time-series,N", po::bool_switch(&ts)->default_value(false),
-      "If thrown, suppresses writing timeseries to stdout.")
+       "If thrown, suppresses writing timeseries to stdout.")
       ("auto-correlation,c", po::value<string>(&autocorrs)->default_value(""), 
       "If provided, write autocorrelations for each inv-projection to filename.");
   }
@@ -54,55 +55,23 @@ public:
   string print() const {
     ostringstream oss;
     oss << boost::format("autocorrs=%s,ts=%b") % autocorrs % ts;
-    return(oss.str());
+    return (oss.str());
   }
   string autocorrs;
   bool ts;
-
 };
 // @endcond
 
-
-// ***EDIT***
-void calculate(const AtomicGroup& structure) {
-  // Do something here with an atom...
-}
-
-
-
-
 int main(int argc, char *argv[]) {
-  
-  // Store the invocation information for logging later
+
   string header = invocationHeader(argc, argv);
-  
-  // Build up the command-line options for this tool by instantiating
-  // the appropriate OptionsPackage objects...
 
-  // Basic options should be used by all tools.  It provides help,
-  // verbosity, and the ability to read options from a config file
-  opts::BasicOptions* bopts = new opts::BasicOptions;
+  opts::BasicOptions *bopts = new opts::BasicOptions;
+  opts::BasicSelection *sopts = new opts::BasicSelection;
+  opts::MultiTrajOptions *mtopts = new opts::MultiTrajOptions;
+  ToolOptions *topts = new ToolOptions;
 
-  // This tool can operate on a subset of atoms.  The BasicSelection
-  // object provides the "--selection" option.
-  opts::BasicSelection* sopts = new opts::BasicSelection;
-
-  // The BasicTrajectory object handles specifying a trajectory as
-  // well as a "--skip" option that lets the tool skip the first
-  // number of frames (i.e. equilibration).  It creates a pTraj object
-  // that is already primed for reading...
-  opts::BasicTrajectory* tropts = new opts::BasicTrajectory;
-
-  // ***EDIT***
-  // Tool-specific options can be included here...
-  ToolOptions* topts = new ToolOptions;
-
-  // ***EDIT***
-  // All of the OptionsPackages are combined via the AggregateOptions
-  // object.  First instantiate it, then add the desired
-  // OptionsPackage objects.  The order is important.  We recommend
-  // you progress from general (Basic and Selection) to more specific
-  // (model) and finally the tool options.
+  // combine options
   opts::AggregateOptions options;
   options.add(bopts).add(sopts).add(tropts).add(topts);
 
@@ -112,28 +81,27 @@ int main(int argc, char *argv[]) {
     exit(-1);
 
   // Pull the model from the options object (it will include coordinates)
-  AtomicGroup model = tropts->model;
-  
+  AtomicGroup model = mtopts->model;
+
   // Pull out the trajectory...
-  pTraj traj = tropts->trajectory;
+  pTraj traj = mtopts->trajectory;
 
   // Select the desired atoms to operate over...
-  AtomicGroup subset = selectAtoms(model, sopts->selection);
-
-  // Now iterate over all frames in the trajectory (excluding the skip
-  // region)
+  AtomicGroup nuclei = selectAtoms(model, sopts->selection);
+  VectorXd zcoords(nuclei.size());
+  MatrixXd zdists(nuclei.size(), nuclei.size());
+  vector<matrixX
+  // Now iterate over all frames in the skipped & strided trajectory
   while (traj->readFrame()) {
 
-    // Update the coordinates ONLY for the subset of atoms we're
-    // interested in...
-    traj->updateGroupCoords(subset);
+    // Update the coordinates ONLY for the subset
+    traj->updateGroupCoords(nuclei);
+    // pick out zcoords
+    for (auto i=0; i < nuclei.size(); i++){
+      zcoords(i) = nuclei[i]->coords();
+    }
+    zdists = Clustering::pairwiseDists(zcoords);
 
-    // ***EDIT***
-    // Now calculate something with the AtomicGroup
-    calculate(subset);
   }
-
-  // ***EDIT***
-  // Output results...
 
 }
