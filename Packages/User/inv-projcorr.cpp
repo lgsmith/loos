@@ -28,10 +28,11 @@
 #include "Packages/Clustering/Clustering.hpp"
 #include "loos.hpp"
 #include <eigen3/Eigen/Dense>
+#include <eigne3/unsupported/Eigen/CXX11/Tensor>
 
 using namespace std;
 using namespace loos;
-using namespace eigen;
+using namespace Eigen;
 
 namespace opts = loos::OptionsFramework;
 namespace po = loos::OptionsFramework::po;
@@ -73,7 +74,7 @@ int main(int argc, char *argv[]) {
 
   // combine options
   opts::AggregateOptions options;
-  options.add(bopts).add(sopts).add(tropts).add(topts);
+  options.add(bopts).add(sopts).add(mtopts).add(topts);
 
   // Parse the command-line.  If an error occurred, help will already
   // be displayed and it will return a FALSE value.
@@ -90,7 +91,6 @@ int main(int argc, char *argv[]) {
   AtomicGroup nuclei = selectAtoms(model, sopts->selection);
   VectorXd zcoords(nuclei.size());
   MatrixXd zdists(nuclei.size(), nuclei.size());
-  vector<matrixX
   // Now iterate over all frames in the skipped & strided trajectory
   while (traj->readFrame()) {
 
@@ -101,6 +101,7 @@ int main(int argc, char *argv[]) {
       zcoords(i) = nuclei[i]->coords();
     }
     zdists = Clustering::pairwiseDists(zcoords);
+
 
   }
 
