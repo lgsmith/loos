@@ -25,10 +25,10 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "Packages/Clustering/Clustering.hpp"
+// #include "Packages/Clustering/Clustering.hpp"
 #include "loos.hpp"
 #include <eigen3/Eigen/Dense>
-#include <eigne3/unsupported/Eigen/CXX11/Tensor>
+#include <eigen3/unsupported/Eigen/CXX11/Tensor>
 
 using namespace std;
 using namespace loos;
@@ -89,8 +89,9 @@ int main(int argc, char *argv[]) {
 
   // Select the desired atoms to operate over...
   AtomicGroup nuclei = selectAtoms(model, sopts->selection);
-  VectorXd zcoords(nuclei.size());
-  MatrixXd zdists(nuclei.size(), nuclei.size());
+  Tensor<double, 1> zcoords(nuclei.size());
+  Tensor<double, 2> zdists(nuclei.size(), nuclei.size());
+  Tensor<double, 3> all_zdists(nuclei.size(), nuclei.size(), mtopts->mtraj.nframes());
   // Now iterate over all frames in the skipped & strided trajectory
   while (traj->readFrame()) {
 
@@ -98,9 +99,9 @@ int main(int argc, char *argv[]) {
     traj->updateGroupCoords(nuclei);
     // pick out zcoords
     for (auto i=0; i < nuclei.size(); i++){
-      zcoords(i) = nuclei[i]->coords();
+      zcoords(i) = nuclei[i]->coords()[0];
     }
-    zdists = Clustering::pairwiseDists(zcoords);
+    
 
 
   }
