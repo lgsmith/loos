@@ -90,8 +90,9 @@ int main(int argc, char *argv[]) {
   // Select the desired atoms to operate over...
   AtomicGroup nuclei = selectAtoms(model, sopts->selection);
   Tensor<double, 1> zcoords(nuclei.size());
-  Tensor<double, 2> zdists(nuclei.size(), nuclei.size());
-  Tensor<double, 3> all_zdists(nuclei.size(), nuclei.size(), mtopts->mtraj.nframes());
+  // Tensor<double, 2> zdists(nuclei.size(), nuclei.size());
+  // Tensor<double, 3> all_zdists(nuclei.size(), nuclei.size(), mtopts->mtraj.nframes());
+  // VectorXd zcoords(nuclei.size());
   // Now iterate over all frames in the skipped & strided trajectory
   while (traj->readFrame()) {
 
@@ -101,7 +102,10 @@ int main(int argc, char *argv[]) {
     for (auto i=0; i < nuclei.size(); i++){
       zcoords(i) = nuclei[i]->coords()[0];
     }
+    for (auto i=0; i < nuclei.size(); i++)
+      cout << zcoords(i) << " ";
     
+    cout << "\n";
 
 
   }
