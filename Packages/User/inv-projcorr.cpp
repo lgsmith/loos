@@ -89,8 +89,11 @@ int main(int argc, char *argv[]) {
 
   // Select the desired atoms to operate over...
   AtomicGroup nuclei = selectAtoms(model, sopts->selection);
+  cout << nuclei.size() << "\n";
   Tensor<double, 1> zcoords(nuclei.size());
   // Tensor<double, 2> zdists(nuclei.size(), nuclei.size());
+  Eigen::array<int, 2> bc({nuclei.size(), nuclei.size()});
+  Eigen::array<int, 2> flip({1,0});
   // Tensor<double, 3> all_zdists(nuclei.size(), nuclei.size(), mtopts->mtraj.nframes());
   // VectorXd zcoords(nuclei.size());
   // Now iterate over all frames in the skipped & strided trajectory
@@ -102,11 +105,9 @@ int main(int argc, char *argv[]) {
     for (auto i=0; i < nuclei.size(); i++){
       zcoords(i) = nuclei[i]->coords()[0];
     }
-    for (auto i=0; i < nuclei.size(); i++)
-      cout << zcoords(i) << " ";
-    
-    cout << "\n";
-
+    // zdists = zcoords.broadcast(bc).eval();// + zcoords.broadcast(bc).shuffle(flip);
+    cout << "frame " << mtopts->mtraj.currentFrame() << "\n";
+    cout << zcoords.broadcast(bc).eval() << "\n";
 
   }
 
