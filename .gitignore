@@ -418,6 +418,7 @@ Packages/DensityTools/water-sides
 Packages/DensityTools/gridmask
 Packages/DensityTools/water-inside
 Packages/User/model_calc
+Packages/User/inv-projcorr
 Packages/User/traj_calc
 Packages/User/simple_model_calc
 Packages/User/simple_model_transform

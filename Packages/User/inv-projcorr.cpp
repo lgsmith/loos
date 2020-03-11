@@ -25,10 +25,10 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-// #include "Packages/Clustering/Clustering.hpp"
 #include "loos.hpp"
-#include <eigen3/Eigen/Dense>
-#include <eigen3/unsupported/Eigen/CXX11/Tensor>
+#include <Eigen/Dense>
+#include <unsupported/Eigen/CXX11/Tensor>
+#include <unsupported/Eigen/CXX11/TensorSymmetry>
 
 using namespace std;
 using namespace loos;
@@ -39,6 +39,16 @@ namespace po = loos::OptionsFramework::po;
 
 const string fullHelpMsg = "XXX";
 
+// binary log 2. from bit-twiddling hacks naive impl.
+inline uint binlog2(uint x){
+  uint twoLog = 0;
+  while (x >>= 1) ++twoLog;
+  return twoLog;
+}
+// binary 2^x
+inline uint binexp2(uint x){
+  return 1 << x;
+}
 // @cond TOOLS_INTERNAL
 class ToolOptions : public opts::OptionsPackage {
 public:
@@ -89,11 +99,19 @@ int main(int argc, char *argv[]) {
 
   // Select the desired atoms to operate over...
   AtomicGroup nuclei = selectAtoms(model, sopts->selection);
-  cout << nuclei.size() << "\n";
   Tensor<double, 2> zcoords(nuclei.size(), 1);
   Eigen::array<int, 2> bc({1, nuclei.size()});
   Eigen::array<int, 2> flip({1,0});
-  // Tensor<double, 3> all_zdists(nuclei.size(), nuclei.size(), mtopts->mtraj.nframes());
+  // pad batch dimension with zeros so that autocorrelation isn't circularly 
+  if (mtopts->mtraj.nframes() == 0){
+    cout << "ERROR: can't work with zero frames.\n";
+    exit(-1);
+  }
+  // compute the next greatest power of two beyond 2*nFrames -1, the number of points in reverse fft.
+  uint zeropad_size = binexp2(binlog2(2*mtopts->mtraj.nframes() - 1));
+  Tensor<double, 3> all_zdists(nuclei.size(), nuclei.size(), zeropad_size);
+  all_zdists.setZero();
+  SGroup<AntiSymmetry<0, 1>> sym;
   // VectorXd zcoords(nuclei.size());
   // Now iterate over all frames in the skipped & strided trajectory
   while (traj->readFrame()) {
@@ -104,11 +122,13 @@ int main(int argc, char *argv[]) {
     for (auto i=0; i < nuclei.size(); i++){
       zcoords(i) = nuclei[i]->coords()[0];
     }
-    // zdists = zcoords.broadcast(bc).eval();// + zcoords.broadcast(bc).shuffle(flip);
-    cout << "frame " << mtopts->mtraj.currentFrame() << "\n";
-    cout << zcoords.broadcast(bc) << "\n";
-    cout << zcoords.broadcast(bc) - zcoords.broadcast(bc).shuffle(flip) << "\n";
+    
+    all_zdists.chip(mtopts->mtraj.currentFrame(), 2) = zcoords.broadcast(bc) - zcoords.broadcast(bc).shuffle(flip);
 
   }
+
+  cout << all_zdists << endl;
+  for (auto i = 0; i < mtopts->mtraj.nframes(); i++)
+    cout << "frame " << i << "\n" << all_zdists.chip(i, 2) << "\n";
 
 }
