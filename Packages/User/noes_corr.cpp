@@ -1,157 +1,139 @@
+/*
+  internuclear-vector-corr-projections
+  Writes the z projection of all selected internuclear vectors out as a
+  timeseries, Optionally finding each autocorrelation as well.
+*/
 
-#include <loos.hpp>
-#include "boost/tuple/tuple.hpp"
+/*
+  This file is part of LOOS.
+
+  LOOS (Lightweight Object-Oriented Structure library)
+  Copyright (c) 2020, Louis
+  Department of Biochemistry and Biophysics
+  School of Medicine & Dentistry, University of Rochester
+
+  This package (LOOS) is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation under version 3 of the License.
+
+  This package is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+#include "loos.hpp"
+#include <Eigen/Dense>
+#include <unsupported/Eigen/CXX11/Tensor>
+#include <unsupported/Eigen/CXX11/TensorSymmetry>
 
 using namespace std;
 using namespace loos;
-// using namespace ::boost::tuples;
+using namespace Eigen;
 
 namespace opts = loos::OptionsFramework;
 namespace po = loos::OptionsFramework::po;
 
-string fullHelpMessage(void)
-{
-  string msg =
-      "\nNothing here yet\n";
-  return (msg);
+const string fullHelpMsg = "XXX";
+
+// binary log 2. from bit-twiddling hacks naive impl.
+inline uint binlog2(uint x){
+  uint twoLog = 0;
+  while (x >>= 1) ++twoLog;
+  return twoLog;
 }
-
-typedef tuple<pAtom, pAtom, double> AtomPair;
-
-bool cmpAtomPairs(const AtomPair &a1, const AtomPair &a2)
-{
-  return (get<2>(a1) < get<2>(a2));
+// binary 2^x
+inline uint binexp2(uint x){
+  return 1 << x;
 }
+// @cond TOOLS_INTERNAL
+class ToolOptions : public opts::OptionsPackage {
+public:
+  // clang-format off
+  void addGeneric(po::options_description& o) {
+    o.add_options()
+      ("time-series,t", po::bool_switch(&ts)->default_value(false),
+       "If thrown, write timeseries of instantaneous correlation function to stdout.")
+      ("gamma,g", po::value<double>(&w)->default_value(42.58),
+      "Set the larmor frequency to arg.")
+      ("field-strength,B", po::value<double>(&B)->default_value(14.1),
+       "Set the value of the experimental field strength.")
+      ("sampling-freq,f", po::value<double>(&f)->default_value(1),
+       "time-spacing of samples from trajectory, in GHz. Frequency of zero is an error.")
+      ;
+  }
+  // clang-format on
+  // The print() function returns a string that describes what all the
+  // options are set to (for logging purposes)
+  string print() const {
+    ostringstream oss;
+    oss << boost::format("ts=%b,w=%d,B=%d,f=%d") % ts % w % B % f;
+    return (oss.str());
+  }
+  bool ts;
+  double w,B,f;
+};
+// @endcond
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
 
-  cout << "# " << invocationHeader(argc, argv) << endl;
-  opts::BasicOptions *bopts = new opts::BasicOptions(fullHelpMessage());
+  string header = invocationHeader(argc, argv);
+
+  opts::BasicOptions *bopts = new opts::BasicOptions;
+  opts::BasicSelection *sopts = new opts::BasicSelection;
   opts::MultiTrajOptions *mtopts = new opts::MultiTrajOptions;
-  opts::BasicSelection *sopts = new opts::BasicSelection("all");
-  opts::WeightsOptions *wopts = new opts::WeightsOptions;
+  ToolOptions *topts = new ToolOptions;
 
+  // combine options
   opts::AggregateOptions options;
-  options.add(bopts).add(sopts).add(mtopts).add(wopts);
+  options.add(bopts).add(sopts).add(mtopts).add(topts);
+
+  // Parse the command-line.  If an error occurred, help will already
+  // be displayed and it will return a FALSE value.
   if (!options.parse(argc, argv))
     exit(-1);
 
-  AtomicGroup system = mtopts->model;
+  // Pull the model from the options object (it will include coordinates)
+  AtomicGroup model = mtopts->model;
+
+  // Pull out the trajectory...
   pTraj traj = mtopts->trajectory;
 
-  AtomicGroup molecule = selectAtoms(system, sopts->selection);
-  ;
-  AtomicGroup hydrogens = molecule.select(HydrogenSelector());
-  cout << "# Number of hydrogens = " << hydrogens.size() << endl;
-
-  // TODO: Add a check for connectivity
-
-  vector<AtomPair> hydrogen_pairs;
-
-  // Build up a list of the pairs to check
-  for (uint i = 0; i < hydrogens.size() - 1; i++)
-  {
-    int bondedTo = hydrogens[i]->getBonds()[0]; // hydrogens only have 1 bond
-    for (uint j = i + 1; j < hydrogens.size(); j++)
-    {
-      // skip hydrogens bound to the same heavy atom
-      // TODO: other pairs we should skip
-      if (bondedTo != hydrogens[j]->getBonds()[0])
-      {
-        hydrogen_pairs.push_back(
-            AtomPair(hydrogens[i], hydrogens[j], 0.0));
-      }
-    }
+  // Select the desired atoms to operate over...
+  AtomicGroup nuclei = selectAtoms(model, sopts->selection);
+  Tensor<double, 2> zcoords(nuclei.size(), 1);
+  Eigen::array<int, 2> bc({1, nuclei.size()});
+  Eigen::array<int, 2> flip({1,0});
+  // pad batch dimension with zeros so that autocorrelation isn't circularly 
+  if (mtopts->mtraj.nframes() == 0){
+    cout << "ERROR: can't work with zero frames.\n";
+    exit(-1);
   }
-  cout << "# Number of pairs = " << hydrogen_pairs.size() << endl;
-  // track frame count for ranking after traj loop if no weights
-  uint frame = 0;
-  vector<uint> indices = mtopts->frameList();
-  if (wopts->has_weights)
-  {
-    wopts->weights.add_traj(traj);
+  // compute the next greatest power of two beyond 2*nFrames -1, the number of points in reverse fft.
+  uint zeropad_size = binexp2(binlog2(2*mtopts->mtraj.nframes() - 1));
+  Tensor<double, 3> all_zdists(nuclei.size(), nuclei.size(), zeropad_size);
+  all_zdists.setZero();
+  SGroup<AntiSymmetry<0, 1>> sym;
+  // VectorXd zcoords(nuclei.size());
+  // Now iterate over all frames in the skipped & strided trajectory
+  while (traj->readFrame()) {
 
-    for (vector<uint>::iterator i = indices.begin(); i != indices.end(); ++i)
-    {
-      traj->readFrame(*i);
-      traj->updateGroupCoords(system);
-
-      for (vector<AtomPair>::iterator p = hydrogen_pairs.begin();
-           p != hydrogen_pairs.end();
-           ++p)
-      {
-        pAtom a1 = get<0>(*p);
-        pAtom a2 = get<1>(*p);
-
-        double d2 = a1->coords().distance2(a2->coords(), system.periodicBox());
-
-        // TODO: if we store this as a time series instead of just
-        //       accumulating, we could then do PCA and pick out
-        //       structural transitions
-        // Here incorporate frame weight as numerator of 1/r^6
-        get<2>(*p) += wopts->weights() / (d2 * d2 * d2);
-      }
-      // Track the amount of weight used, rather than the frameno
-      wopts->weights.accumulate();
+    // Update the coordinates ONLY for the subset
+    traj->updateGroupCoords(nuclei);
+    // pick out zcoords
+    for (auto i=0; i < nuclei.size(); i++){
+      zcoords(i) = nuclei[i]->coords()[0];
     }
+    
+    all_zdists.chip(mtopts->mtraj.currentFrame(), 2) = zcoords.broadcast(bc) - zcoords.broadcast(bc).shuffle(flip);
+
   }
-  else
-  { // If there are no frame weights, don't worry about reweighting in calx.
-    for (vector<uint>::iterator i = indices.begin(); i != indices.end(); ++i)
-    {
-      traj->readFrame(*i);
-      traj->updateGroupCoords(system);
 
-      for (vector<AtomPair>::iterator p = hydrogen_pairs.begin();
-           p != hydrogen_pairs.end();
-           ++p)
-      {
-        pAtom a1 = get<0>(*p);
-        pAtom a2 = get<1>(*p);
+  cout << all_zdists << endl;
+  for (auto i = 0; i < mtopts->mtraj.nframes(); i++)
+    cout << "frame " << i << "\n" << all_zdists.chip(i, 2) << "\n";
 
-        double d2 = a1->coords().distance2(a2->coords(), system.periodicBox());
-
-        // TODO: if we store this as a time series instead of just
-        //       accumulating, we could then do PCA and pick out
-        //       structural transitions
-        get<2>(*p) += 1.0 / (d2 * d2 * d2);
-      }
-
-      frame++;
-    }
-  }
-  // sort into ascending order by noe amplitude
-  sort(hydrogen_pairs.begin(), hydrogen_pairs.end(), &cmpAtomPairs);
-
-  // const double threshold = 1. / (8 * 8 * 8 * 8 * 8 * 8);
-  // print a header for the output
-  cout << "# vol    mean_r  resname resid name  index resname resid name  index";
-  for (vector<AtomPair>::reverse_iterator p = hydrogen_pairs.rbegin();
-       p != hydrogen_pairs.rend();
-       ++p)
-  {
-    pAtom a1 = get<0>(*p);
-    pAtom a2 = get<1>(*p);
-
-    double val;
-    if (wopts->has_weights)
-    {
-      val = get<2>(*p) / wopts->weights.totalWeight();
-    }
-    else
-    {
-      val = get<2>(*p) / frame;
-    }
-    double val6 = pow(1 / val, 1 / 6.);
-    // if (val > threshold)
-    // {
-    cout << endl << val << "\t" << val6 << "\t"
-          << a1->resname() << "\t" << a1->resid() << "\t" << a1->name() << "\t"
-          << a1->index()
-          << "\t"
-          << a2->resname() << "\t" << a2->resid() << "\t" << a2->name() << "\t"
-          << a2->index();
-    // }
-  }
 }
