@@ -43,10 +43,6 @@ GTAGS
 .*.json
 .clang_complete
 
-# cruft from vscode
-.vscode
-.vscode/*
-**.vscode
 
 # cruft from sublime text
 *.sublime*
@@ -57,6 +53,9 @@ GTAGS
 
 # VSCode cruft
 **.vscode
+
+# PyCharm Cruft
+**.idea
 
 # JSON files
 .*.json
