@@ -55,21 +55,26 @@ public:
   // clang-format off
   void addGeneric(po::options_description& o) {
     o.add_options()
-      ("no-time-series,N", po::bool_switch(&ts)->default_value(false),
-       "If thrown, suppresses writing timeseries to stdout.")
-      ("auto-correlation,c", po::value<string>(&autocorrs)->default_value(""), 
-      "If provided, write autocorrelations for each inv-projection to filename.");
+      ("time-series,t", po::bool_switch(&ts)->default_value(false),
+       "If thrown, write timeseries of instantaneous correlation function to stdout.")
+      ("gamma,g", po::value<double>(&w)->default_value(42.58),
+      "Set the larmor frequency to arg.")
+      ("field-strength,B", po::value<double>(&B)->default_value(14.1),
+       "Set the value of the experimental field strength.")
+      ("sampling-freq,f", po::value<double>(&f)->default_value(1),
+       "time-spacing of samples from trajectory, in GHz. Frequency of zero is an error.")
+      ;
   }
   // clang-format on
   // The print() function returns a string that describes what all the
   // options are set to (for logging purposes)
   string print() const {
     ostringstream oss;
-    oss << boost::format("autocorrs=%s,ts=%b") % autocorrs % ts;
+    oss << boost::format("ts=%b,w=%d,B=%d,f=%d") % ts % w % B % f;
     return (oss.str());
   }
-  string autocorrs;
   bool ts;
+  double w,B,f;
 };
 // @endcond
 
