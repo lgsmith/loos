@@ -460,7 +460,7 @@ namespace loos {
       return uniquifyVector(indices);
     }
 
-    std::string MultiTrajOptions::help() const { return("model trajectory [trajectory ...]"); }
+    std::string MultiTrajOptions::help() const { return("model traj [traj ...]"); }
     std::string MultiTrajOptions::print() const {
       std::ostringstream oss;
       oss << boost::format("model='%s', modeltype='%s', skip=%d, stride=%d, trajs=(")
@@ -592,7 +592,11 @@ namespace loos {
       } else if (map.count("weights-list")) {
         has_weights = true;
         weights.read_weights_list(list_name);
+      } else
+      {
+        has_weights = false;
       }
+
       return true;
     }
 

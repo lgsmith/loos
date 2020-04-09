@@ -28,6 +28,9 @@ namespace loos {
     {
         std::ifstream ifs(filename.c_str());
         if (!ifs) {
+            std::cerr << "Cannot open weights file: "
+                      << filename
+                      << std::endl;
             throw(FileOpenError(filename));
         }
 

@@ -45,7 +45,7 @@ namespace po = loos::OptionsFramework::po;
 
 
 
-const int matrix_precision = 2;    // Controls precision in output matrix
+// const int matrix_precision = 2;    // Controls precision in output matrix
 
 int verbosity;
 
@@ -141,8 +141,8 @@ public:
       ("sel2", po::value<string>(&sel2)->default_value("name == 'CA'"), "Atom selection for second system")
       ("skip2", po::value<uint>(&skip2)->default_value(0), "Skip n-frames of second trajectory")
       ("range2", po::value<string>(&range2), "Matlab-style range of frames to use from second trajectory")
-      ("stats", po::value<bool>(&stats)->default_value(false), "Show some statistics for matrix");
-
+      ("stats", po::value<bool>(&stats)->default_value(false), "Show some statistics for matrix")
+      ("precision,p", po::value<uint>(&matrix_precision)->default_value(2), "Write out matrix coefficients with this many digits.");
   }
 
   void addHidden(po::options_description& o) {
@@ -173,10 +173,12 @@ public:
 
   string print() const {
     ostringstream oss;
-    oss << boost::format("stats=%d,noout=%d,nthreads=%d,sel1='%s',skip1=%d,range1='%s',sel2='%s',skip2=%d,range2='%s',model1='%s',traj1='%s',model2='%s',traj2='%s'")
+    oss << boost::format("stats=%d,matrix_precision=%d,noout=%d,nthreads=%d,sel1='%s',skip1=%d,range1='%s',sel2='%s',skip2=%d,range2='%s',model1='%s',traj1='%s',model2='%s',traj2='%s'")
       % stats
+      % matrix_precision
       % noop
       % nthreads
+      % matrix_precision
       % sel1
       % skip1
       % range1
@@ -196,6 +198,7 @@ public:
   bool noop;
   uint skip1, skip2;
   uint nthreads;
+  uint matrix_precision;
   string range1, range2;
   string model1, traj1, model2, traj2;
   string sel1, sel2;
@@ -561,7 +564,7 @@ int main(int argc, char *argv[]) {
 
   if (!topts->noop) {
     cout << "# " << header << endl;
-    cout << setprecision(matrix_precision) << M;
+    cout << setprecision(topts->matrix_precision) << M;
   }
 
 }

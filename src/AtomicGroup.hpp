@@ -323,6 +323,13 @@ namespace loos {
       return(sortable.sortingSplitByMolecule());
     }
 
+    //! Takes selection string as argument to be applied to each group after splitting.
+    //! Returns a vector of AtomicGroups split based on bond connectivity;
+    std::vector<AtomicGroup> splitByMolecule(const std::string& selection) const {
+      AtomicGroup sortable = *this;
+      return(sortable.sortingSplitByMolecule(selection));
+    }
+
     //! Returns a vector of AtomicGroups, each comprising a single residue
     std::vector<AtomicGroup> splitByResidue(void) const;
 
@@ -777,6 +784,14 @@ namespace loos {
 
     std::vector<double> coordsAsVector() const;
 
+    // Compute the packing score between 2 AtomicGroups
+    /**
+     * The packing score is the sum of 1/r^6 over all pairs of atoms,
+     * respecting periodicity.
+     * Quantity first defined in  Grossfield, A., et al,
+     * Proc. Nat. Acad. Sci. USA, 2006, 103, 4888-4893
+     */
+    double packingScore(const AtomicGroup& other, const GCoord &box, bool norm) const;
 
   private:
 
@@ -843,11 +858,11 @@ namespace loos {
       uint ncontacts = 0;
 
       for (uint j = 0; j<size(); ++j) {
-	GCoord c = atoms[j]->coords();
-	for (uint i = 0; i<grp.size(); ++i)
-	  if (distance_function(c, grp.atoms[i]->coords()) <= dist2)
-	    if (++ncontacts >= min_contacts)
-	      return(true);
+        GCoord c = atoms[j]->coords();
+	    for (uint i = 0; i<grp.size(); ++i)
+            if (distance_function(c, grp.atoms[i]->coords()) <= dist2)
+	          if (++ncontacts >= min_contacts)
+	             return(true);
       }
       return(false);
     }
@@ -881,6 +896,7 @@ namespace loos {
 
 
     std::vector<AtomicGroup> sortingSplitByMolecule();
+    std::vector<AtomicGroup> sortingSplitByMolecule(const std::string& selection);
 
     // *** Internal routines ***  See the .cpp file for details...
     void sorted(bool b) { _sorted = b; }
