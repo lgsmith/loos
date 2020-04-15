@@ -62,7 +62,7 @@ public:
       ("field-strength,B", po::value<double>(&B)->default_value(14.1),
        "Set the value of the experimental field strength.")
       ("sampling-freq,f", po::value<double>(&f)->default_value(1),
-       "time-spacing of samples from trajectory, in GHz. Frequency of zero is an error.")
+       "time-spacing of samples from trajectory, in GHz (frames/ns). A frequency of zero is an error.")
       ;
   }
   // clang-format on
@@ -104,9 +104,12 @@ int main(int argc, char *argv[]) {
 
   // Select the desired atoms to operate over...
   AtomicGroup nuclei = selectAtoms(model, sopts->selection);
-  Tensor<double, 2> zcoords(nuclei.size(), 1);
-  Eigen::array<int, 2> bc({1, nuclei.size()});
+  // Eigen::array<int, 2> bc({1, nuclei.size()});
   Eigen::array<int, 2> flip({1,0});
+  Tensor<double, 2> coords(nuclei.size(), 3);
+  Tensor<double, 3> invs(nuclei.size(), nuclei.size(), 3);
+  // SGroup<Symmetry<0,1>> sym;
+
   // pad batch dimension with zeros so that autocorrelation isn't circularly 
   if (mtopts->mtraj.nframes() == 0){
     cout << "ERROR: can't work with zero frames.\n";
@@ -114,26 +117,25 @@ int main(int argc, char *argv[]) {
   }
   // compute the next greatest power of two beyond 2*nFrames -1, the number of points in reverse fft.
   uint zeropad_size = binexp2(binlog2(2*mtopts->mtraj.nframes() - 1));
-  Tensor<double, 3> all_zdists(nuclei.size(), nuclei.size(), zeropad_size);
-  all_zdists.setZero();
-  SGroup<AntiSymmetry<0, 1>> sym;
   // VectorXd zcoords(nuclei.size());
   // Now iterate over all frames in the skipped & strided trajectory
   while (traj->readFrame()) {
 
     // Update the coordinates ONLY for the subset
     traj->updateGroupCoords(nuclei);
-    // pick out zcoords
-    for (auto i=0; i < nuclei.size(); i++){
-      zcoords(i) = nuclei[i]->coords()[0];
-    }
-    
-    all_zdists.chip(mtopts->mtraj.currentFrame(), 2) = zcoords.broadcast(bc) - zcoords.broadcast(bc).shuffle(flip);
+    // Get coords into a tensor (presuming unrolling below)
+    for (auto i = 0; i < nuclei.size(); i++)
+      for (auto j = 0; j < 3; j++)
+        coords(i,j) = nuclei[i]->coords()[j];
+    // all_zdists.chip(mtopts->mtraj.currentFrame(), 2) = zcoords.broadcast(bc) - zcoords.broadcast(bc).shuffle(flip);
+    // compute interatomic vectors
+    invs = coords - coords.shuffle(flip);
+    cout << invs << endl;
 
   }
 
-  cout << all_zdists << endl;
-  for (auto i = 0; i < mtopts->mtraj.nframes(); i++)
-    cout << "frame " << i << "\n" << all_zdists.chip(i, 2) << "\n";
+  // cout << all_zdists << endl;
+  // for (auto i = 0; i < mtopts->mtraj.nframes(); i++)
+  //   cout << "frame " << i << "\n" << all_zdists.chip(i, 2) << "\n";
 
 }
