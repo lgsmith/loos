@@ -55,7 +55,7 @@ public:
   // clang-format off
   void addGeneric(po::options_description& o) {
     o.add_options()
-      ("time-series,t", po::bool_switch(&ts)->default_value(false),
+      ("time-series,t", po::value<string>(&ts)->default_value(""),
        "If thrown, write timeseries of instantaneous correlation function to stdout.")
       ("gamma,g", po::value<double>(&w)->default_value(42.58),
       "Set the larmor frequency to arg.")
@@ -70,10 +70,10 @@ public:
   // options are set to (for logging purposes)
   string print() const {
     ostringstream oss;
-    oss << boost::format("ts=%b,w=%d,B=%d,f=%d") % ts % w % B % f;
+    oss << boost::format("ts=%s,w=%d,B=%d,f=%d") % ts % w % B % f;
     return (oss.str());
   }
-  bool ts;
+  string ts;
   double w,B,f;
 };
 // @endcond
@@ -101,11 +101,17 @@ int main(int argc, char *argv[]) {
 
   // Pull out the trajectory...
   pTraj traj = mtopts->trajectory;
+  cout << "got through parsing\n";
 
   // Select the desired atoms to operate over...
   AtomicGroup nuclei = selectAtoms(model, sopts->selection);
-  // Eigen::array<int, 2> bc({1, nuclei.size()});
+  Eigen::array<int, 3> bcBack({nuclei.size(), 3, 1});
+  Eigen::array<int, 3> bcMiddle({nuclei.size(), 1, 3});
+  Eigen::array<int, 3> bcFront({1, nuclei.size(), 3});
+  Eigen::array<int, 3> bcFlipMiddle({1,3,nuclei.size()});
+  Eigen::array<int, 3> bcBig({nuclei.size(), nuclei.size(), 3});
   Eigen::array<int, 2> flip({1,0});
+  Eigen::array<int, 3> bigFlip({0,2,1});
   Tensor<double, 2> coords(nuclei.size(), 3);
   Tensor<double, 3> invs(nuclei.size(), nuclei.size(), 3);
   // SGroup<Symmetry<0,1>> sym;
@@ -115,9 +121,6 @@ int main(int argc, char *argv[]) {
     cout << "ERROR: can't work with zero frames.\n";
     exit(-1);
   }
-  // compute the next greatest power of two beyond 2*nFrames -1, the number of points in reverse fft.
-  uint zeropad_size = binexp2(binlog2(2*mtopts->mtraj.nframes() - 1));
-  // VectorXd zcoords(nuclei.size());
   // Now iterate over all frames in the skipped & strided trajectory
   while (traj->readFrame()) {
 
@@ -126,11 +129,29 @@ int main(int argc, char *argv[]) {
     // Get coords into a tensor (presuming unrolling below)
     for (auto i = 0; i < nuclei.size(); i++)
       for (auto j = 0; j < 3; j++)
-        coords(i,j) = nuclei[i]->coords()[j];
+        coords(i, j) = nuclei[i]->coords()[j];
     // all_zdists.chip(mtopts->mtraj.currentFrame(), 2) = zcoords.broadcast(bc) - zcoords.broadcast(bc).shuffle(flip);
     // compute interatomic vectors
-    invs = coords - coords.shuffle(flip);
+
+    cout << "Frame: " << mtopts->mtraj.currentFrame() << "\n";
+    cout << "coords: \n";
+    cout << coords << endl;
+    cout << "broadcast back: \n";
+    cout << coords.broadcast(bcBack) << endl;
+    cout << "broadcast middle: \n";
+    cout << coords.broadcast(bcMiddle)<< endl;
+    cout << "broadcast front: \n";
+    cout << coords.broadcast(bcFront)<< endl;
+    cout << "broadcast flipMiddle: \n";
+    cout << coords.broadcast(bcFlipMiddle)<< endl;
+    cout << "broadcast big: \n";
+    cout << coords.broadcast(bcBig) << endl;
+    cout << "broadcast big flip: \n";
+    cout << coords.broadcast(bcBig).shuffle(bigFlip) << endl;
+    cout << "Internuclear Vectors:\n";
+    invs = coords.broadcast(bcBig).shuffle(bigFlip) - coords.broadcast(bcBig);
     cout << invs << endl;
+    
 
   }
 
