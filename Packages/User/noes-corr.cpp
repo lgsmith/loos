@@ -111,7 +111,7 @@ int main(int argc, char *argv[]) {
   Eigen::array<int, 3> bcFlipMiddle({1,3,nuclei.size()});
   Eigen::array<int, 3> bcBig({nuclei.size(), nuclei.size(), 3});
   Eigen::array<int, 2> flip({1,0});
-  Eigen::array<int, 3> bigFlip({0,2,1});
+  Eigen::array<int, 3> bigFlip({1,0,2});
   Tensor<double, 2> coords(nuclei.size(), 3);
   Tensor<double, 3> invs(nuclei.size(), nuclei.size(), 3);
   // SGroup<Symmetry<0,1>> sym;
@@ -149,7 +149,7 @@ int main(int argc, char *argv[]) {
     cout << "broadcast big flip: \n";
     cout << coords.broadcast(bcBig).shuffle(bigFlip) << endl;
     cout << "Internuclear Vectors:\n";
-    invs = coords.broadcast(bcBig).shuffle(bigFlip) - coords.broadcast(bcBig);
+    invs = coords.broadcast(bcBig) - coords.shuffle(flip);
     cout << invs << endl;
     
 
