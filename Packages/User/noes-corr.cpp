@@ -27,8 +27,9 @@
 
 #include "loos.hpp"
 #include <Eigen/Dense>
+#define EIGEN_USE_THREADS
 #include <unsupported/Eigen/CXX11/Tensor>
-#include <unsupported/Eigen/CXX11/TensorSymmetry>
+#include <unsupported/Eigen/CXX11/ThreadPool>
 
 using namespace std;
 using namespace loos;
@@ -40,15 +41,14 @@ namespace po = loos::OptionsFramework::po;
 const string fullHelpMsg = "XXX";
 
 // binary log 2. from bit-twiddling hacks naive impl.
-inline uint binlog2(uint x){
+inline uint binlog2(uint x) {
   uint twoLog = 0;
-  while (x >>= 1) ++twoLog;
+  while (x >>= 1)
+    ++twoLog;
   return twoLog;
 }
 // binary 2^x
-inline uint binexp2(uint x){
-  return 1 << x;
-}
+inline uint binexp2(uint x) { return 1 << x; }
 // @cond TOOLS_INTERNAL
 class ToolOptions : public opts::OptionsPackage {
 public:
@@ -56,7 +56,9 @@ public:
   void addGeneric(po::options_description& o) {
     o.add_options()
       ("time-series,t", po::value<string>(&ts)->default_value(""),
-       "If thrown, write timeseries of instantaneous correlation function to stdout.")
+       "(Over)write time series to provided file name. If empty, then not written.")
+      ("nthreads,n", po::value<int>(&t)->default_value(1),
+       "Number of threads to use for the calculation.")
       ("gamma,g", po::value<double>(&w)->default_value(42.58),
       "Set the larmor frequency to arg.")
       ("field-strength,B", po::value<double>(&B)->default_value(14.1),
@@ -70,11 +72,12 @@ public:
   // options are set to (for logging purposes)
   string print() const {
     ostringstream oss;
-    oss << boost::format("ts=%s,w=%d,B=%d,f=%d") % ts % w % B % f;
+    oss << boost::format("ts=%s,w=%d,B=%d,f=%d,t=%d") % ts % w % B % f % t;
     return (oss.str());
   }
   string ts;
-  double w,B,f;
+  double w, B, f;
+  int t;
 };
 // @endcond
 
@@ -101,26 +104,47 @@ int main(int argc, char *argv[]) {
 
   // Pull out the trajectory...
   pTraj traj = mtopts->trajectory;
-  cout << "got through parsing\n";
-
-  // Select the desired atoms to operate over...
-  AtomicGroup nuclei = selectAtoms(model, sopts->selection);
-  Eigen::array<int, 3> bcBack({nuclei.size(), 3, 1});
-  Eigen::array<int, 3> bcMiddle({nuclei.size(), 1, 3});
-  Eigen::array<int, 3> bcFront({1, nuclei.size(), 3});
-  Eigen::array<int, 3> bcFlipMiddle({1,3,nuclei.size()});
-  Eigen::array<int, 3> bcBig({nuclei.size(), nuclei.size(), 3});
-  Eigen::array<int, 2> flip({1,0});
-  Eigen::array<int, 3> bigFlip({1,0,2});
-  Tensor<double, 2> coords(nuclei.size(), 3);
-  Tensor<double, 3> invs(nuclei.size(), nuclei.size(), 3);
-  // SGroup<Symmetry<0,1>> sym;
-
-  // pad batch dimension with zeros so that autocorrelation isn't circularly 
-  if (mtopts->mtraj.nframes() == 0){
+  if (mtopts->mtraj.nframes() == 0) {
     cout << "ERROR: can't work with zero frames.\n";
     exit(-1);
   }
+
+  // Select the desired atoms to operate over...
+  AtomicGroup nuclei = selectAtoms(model, sopts->selection);
+  auto N = nuclei.size();
+
+  // NMR precalculations
+  double dd = 1; // dipolar interaction constant, unit distance
+
+  // Magic circle oscillator precomputation
+  double omega = topts->w * topts->B;
+  // we need three frequencies; 0, omega, and two times omega
+  double k = sin(PI * omega / mtopts->mtraj.nframes());
+  double k2 = sin(PI * 2 * omega / mtopts->mtraj.nframes());
+  TensorFixedSize<double, Sizes<3>> K;
+  K(0) = 0;
+  K(1) = k;
+  K(2) = k2;
+
+  // setup for eigen tensor ops below
+  Eigen::array<int, 2> bcChip({N, 3});
+  Tensor<double, 2, RowMajor> coords(N, 3);
+  Tensor<double, 3, RowMajor> internuclear_vectors(N, N, 3);
+  // Define tensors to hold recurrence relation values for magic circle
+  // oscillator.
+  Tensor<double, 2, RowMajor> p1(3, N, N); 
+  Tensor<double, 2, RowMajor> p2(3, N, N);
+  p1.setZero();
+  p2.setZero();
+  // Broadcast dims for multiplying the recurrence tensors by K
+  Eigen::array<int, 3> bcRecurrence({3, N, N});
+  // Dimension object to pick out the coordinates from the internuclear vectors
+  // tensor for summing
+  Eigen::array<int, 1> dimCoords({2});
+  // threading setup for tensor ops
+  ThreadPool pool(topts->t);
+  ThreadPoolDevice threader(&pool, topts->t);
+
   // Now iterate over all frames in the skipped & strided trajectory
   while (traj->readFrame()) {
 
@@ -130,33 +154,26 @@ int main(int argc, char *argv[]) {
     for (auto i = 0; i < nuclei.size(); i++)
       for (auto j = 0; j < 3; j++)
         coords(i, j) = nuclei[i]->coords()[j];
-    // all_zdists.chip(mtopts->mtraj.currentFrame(), 2) = zcoords.broadcast(bc) - zcoords.broadcast(bc).shuffle(flip);
+
     // compute interatomic vectors
-
-    cout << "Frame: " << mtopts->mtraj.currentFrame() << "\n";
-    cout << "coords: \n";
-    cout << coords << endl;
-    cout << "broadcast back: \n";
-    cout << coords.broadcast(bcBack) << endl;
-    cout << "broadcast middle: \n";
-    cout << coords.broadcast(bcMiddle)<< endl;
-    cout << "broadcast front: \n";
-    cout << coords.broadcast(bcFront)<< endl;
-    cout << "broadcast flipMiddle: \n";
-    cout << coords.broadcast(bcFlipMiddle)<< endl;
-    cout << "broadcast big: \n";
-    cout << coords.broadcast(bcBig) << endl;
-    cout << "broadcast big flip: \n";
-    cout << coords.broadcast(bcBig).shuffle(bigFlip) << endl;
-    cout << "Internuclear Vectors:\n";
-    invs = coords.broadcast(bcBig) - coords.shuffle(flip);
-    cout << invs << endl;
-    
-
+    for (auto i = 0; i < N; i++) {
+      internuclear_vectors.chip(i, 0).device(threader) =
+          coords - coords.chip(i, 0).eval().broadcast(bcChip);
+    }
+    cout << "\ninvs from frame : " << mtopts->mtraj.currentFrame() << "\n"
+         << internuclear_vectors << endl;
+    // get z coords, divided by length of inv^4 (cosine(theta)/r^3); auto causes
+    // lazy eval.
+    auto Xs = internuclear_vectors.chip(2, 2) /
+              (internuclear_vectors.square().sum(dimCoords).sqrt()).pow(4);
+    // compute magic circle oscillator recurrence relations for this frame
+    p2.device(threader) = p2 - K.broadcast(bcRecurrence) * p1 + Xs.broadcast(bcRecurrence);
+    p1.device(threader) = p1 + K * p2;
   }
+  // this expression records the squared value of the spectral density at the three freqs.
+  auto J = p1 *p1 + p2*p2 - K.broadcast(bcRecurrence)*p1*p2;
 
-  // cout << all_zdists << endl;
-  // for (auto i = 0; i < mtopts->mtraj.nframes(); i++)
-  //   cout << "frame " << i << "\n" << all_zdists.chip(i, 2) << "\n";
+  // Comput sigma_{ij} and rho_i following Chalmers et al.
+  
 
 }
