@@ -178,9 +178,9 @@ int main(int argc, char *argv[]) {
   // Comput sigma_{ij} and rho_i following Chalmers et al.
   // Sigma is the cross-relaxation rate, and is 
   // the sum over the full power and omega spectral densities.
-  auto sigma = J.chip(0, 0) - 6 * J.chip(0, 2);
+  auto sigma = J.chip(0, 0) - 6 * J.chip(2, 0);
   // rho is the diagonal of the relaxation matrix, 
   // and is the sum over all non-diagonal elements.
-  auto rho = (J.chip(0, 0) + 3 * J.chip(0, 1) + 6 * J.chip(0, 2))
+  auto rho = (J.chip(0, 0) + 3 * J.chip(1, 0) + 6 * J.chip(2, 0))
                  .sum(Eigen::array<int, 1>({1}));
 }

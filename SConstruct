@@ -138,7 +138,7 @@ if not pyloos:
 
 
 # Compile-flags
-debug_opts = '-g -Wall -Wextra -fno-inline'
+debug_opts = '-g -Og -Wall -Wextra -fno-inline'
 release_opts = '-O3 -DNDEBUG -Wall -Wno-deprecated'
 profile_opts = '-O3 -DNDEBUG -Wall -g'
 
