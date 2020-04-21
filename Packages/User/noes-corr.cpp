@@ -132,7 +132,7 @@ int main(int argc, char *argv[]) {
   Tensor<double, 3, RowMajor> internuclear_vectors(N, N, 3);
   // Define tensors to hold recurrence relation values for magic circle
   // oscillator.
-  Tensor<double, 2, RowMajor> p1(3, N, N); 
+  Tensor<double, 2, RowMajor> p1(3, N, N);
   Tensor<double, 2, RowMajor> p2(3, N, N);
   p1.setZero();
   p2.setZero();
@@ -167,13 +167,20 @@ int main(int argc, char *argv[]) {
     auto Xs = internuclear_vectors.chip(2, 2) /
               (internuclear_vectors.square().sum(dimCoords).sqrt()).pow(4);
     // compute magic circle oscillator recurrence relations for this frame
-    p2.device(threader) = p2 - K.broadcast(bcRecurrence) * p1 + Xs.broadcast(bcRecurrence);
+    p2.device(threader) =
+        p2 - K.broadcast(bcRecurrence) * p1 + Xs.broadcast(bcRecurrence);
     p1.device(threader) = p1 + K * p2;
   }
-  // this expression records the squared value of the spectral density at the three freqs.
-  auto J = p1 *p1 + p2*p2 - K.broadcast(bcRecurrence)*p1*p2;
+  // this expression records the squared value of the spectral density at the
+  // three freqs.
+  auto J = p1 * p1 + p2 * p2 - K.broadcast(bcRecurrence) * p1 * p2;
 
   // Comput sigma_{ij} and rho_i following Chalmers et al.
-  
-
+  // Sigma is the cross-relaxation rate, and is 
+  // the sum over the full power and omega spectral densities.
+  auto sigma = J.chip(0, 0) - 6 * J.chip(0, 2);
+  // rho is the diagonal of the relaxation matrix, 
+  // and is the sum over all non-diagonal elements.
+  auto rho = (J.chip(0, 0) + 3 * J.chip(0, 1) + 6 * J.chip(0, 2))
+                 .sum(Eigen::array<int, 1>({1}));
 }
