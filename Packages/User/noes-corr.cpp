@@ -40,15 +40,6 @@ namespace po = loos::OptionsFramework::po;
 
 const string fullHelpMsg = "XXX";
 
-// binary log 2. from bit-twiddling hacks naive impl.
-inline uint binlog2(uint x) {
-  uint twoLog = 0;
-  while (x >>= 1)
-    ++twoLog;
-  return twoLog;
-}
-// binary 2^x
-inline uint binexp2(uint x) { return 1 << x; }
 // @cond TOOLS_INTERNAL
 class ToolOptions : public opts::OptionsPackage {
 public:
