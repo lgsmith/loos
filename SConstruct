@@ -136,11 +136,12 @@ if not pyloos:
     print('***Warning***')
     print('PyLOOS will not be built.  The OMG will not be installed.')
 
-
+# -isystem hack to get rid of absurdly over voluminous warnings from tensor lib
+tensorincludeflag = ' -isystem/home/louis/miniconda3/envs/loos/include/eigen3/'
 # Compile-flags
-debug_opts = '-g -Og -Wall -Wextra -fno-inline'
-release_opts = '-O3 -DNDEBUG -Wall -Wno-deprecated'
-profile_opts = '-O3 -DNDEBUG -Wall -g'
+debug_opts = '-g -Og -Wall -Wextra -fno-inline' + tensorincludeflag
+release_opts = '-O3 -DNDEBUG -Wall -Wno-deprecated' + tensorincludeflag
+profile_opts = '-O3 -DNDEBUG -Wall -g' + tensorincludeflag
 
 # Setup the general environment...
 env.Prepend(CPPPATH=['#', '#src'])

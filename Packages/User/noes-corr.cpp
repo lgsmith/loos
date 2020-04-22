@@ -65,6 +65,8 @@ public:
        "Set the value of the experimental field strength.")
       ("sampling-freq,f", po::value<double>(&f)->default_value(1),
        "time-spacing of samples from trajectory, in GHz (frames/ns). A frequency of zero is an error.")
+      ("mix,m", po::value<double>(&m)->default_value(0),
+      "Mixing time for experiment. A value of zero means no SD.")
       ;
   }
   // clang-format on
@@ -76,7 +78,7 @@ public:
     return (oss.str());
   }
   string ts;
-  double w, B, f;
+  double w, B, f, m;
   int t;
 };
 // @endcond
@@ -111,20 +113,23 @@ int main(int argc, char *argv[]) {
 
   // Select the desired atoms to operate over...
   AtomicGroup nuclei = selectAtoms(model, sopts->selection);
-  auto N = nuclei.size();
+  const auto N = nuclei.size();
 
   // NMR precalculations
   double dd = 1; // dipolar interaction constant, unit distance
 
+  // Broadcast dims for multiplying the recurrence tensors by K
+  Eigen::array<int, 3> bcRecurrence({3, N, N});
   // Magic circle oscillator precomputation
   double omega = topts->w * topts->B;
   // we need three frequencies; 0, omega, and two times omega
   double k = sin(PI * omega / mtopts->mtraj.nframes());
   double k2 = sin(PI * 2 * omega / mtopts->mtraj.nframes());
-  TensorFixedSize<double, Sizes<3>> K;
-  K(0) = 0;
-  K(1) = k;
-  K(2) = k2;
+  TensorFixedSize<double, Sizes<3>, RowMajor> K_base;
+  Tensor<double, 3, RowMajor> K(3, N, N);
+  // constant sinusoids to be generated.
+  K_base.setValues({0, k, k2});
+  K = K_base.broadcast(bcRecurrence);
 
   // setup for eigen tensor ops below
   Eigen::array<int, 2> bcChip({N, 3});
@@ -132,15 +137,15 @@ int main(int argc, char *argv[]) {
   Tensor<double, 3, RowMajor> internuclear_vectors(N, N, 3);
   // Define tensors to hold recurrence relation values for magic circle
   // oscillator.
-  Tensor<double, 2, RowMajor> p1(3, N, N);
-  Tensor<double, 2, RowMajor> p2(3, N, N);
+  Tensor<double, 3, RowMajor> p1(3, N, N);
+  Tensor<double, 3, RowMajor> p2(3, N, N);
   p1.setZero();
   p2.setZero();
-  // Broadcast dims for multiplying the recurrence tensors by K
-  Eigen::array<int, 3> bcRecurrence({3, N, N});
+
   // Dimension object to pick out the coordinates from the internuclear vectors
   // tensor for summing
   Eigen::array<int, 1> dimCoords({2});
+
   // threading setup for tensor ops
   ThreadPool pool(topts->t);
   ThreadPoolDevice threader(&pool, topts->t);
@@ -167,20 +172,28 @@ int main(int argc, char *argv[]) {
     auto Xs = internuclear_vectors.chip(2, 2) /
               (internuclear_vectors.square().sum(dimCoords).sqrt()).pow(4);
     // compute magic circle oscillator recurrence relations for this frame
-    p2.device(threader) =
-        p2 - K.broadcast(bcRecurrence) * p1 + Xs.broadcast(bcRecurrence);
+    p2.device(threader) = p2 - K * p1 + Xs.eval().broadcast(bcRecurrence);
     p1.device(threader) = p1 + K * p2;
   }
   // this expression records the squared value of the spectral density at the
   // three freqs.
-  auto J = p1 * p1 + p2 * p2 - K.broadcast(bcRecurrence) * p1 * p2;
+  auto J_base = p1 * p1 + p2 * p2 - K * p1 * p2;
 
+  Tensor<bool, 3, RowMajor> nans =
+      J_base == std::numeric_limits<double>::quiet_NaN();
+  Tensor<double, 3, RowMajor> zeros(3, N, N);
+  zeros.setZero();
+  auto J = nans.select(zeros, J_base);
   // Comput sigma_{ij} and rho_i following Chalmers et al.
-  // Sigma is the cross-relaxation rate, and is 
+  // Sigma is the cross-relaxation rate, and is
   // the sum over the full power and omega spectral densities.
   auto sigma = J.chip(0, 0) - 6 * J.chip(2, 0);
-  // rho is the diagonal of the relaxation matrix, 
+  // rho is the diagonal of the relaxation matrix,
   // and is the sum over all non-diagonal elements.
   auto rho = (J.chip(0, 0) + 3 * J.chip(1, 0) + 6 * J.chip(2, 0))
                  .sum(Eigen::array<int, 1>({1}));
+  Tensor<double, 2, RowMajor> R_t(N, N);
+  R_t.device(threader) = sigma + rho;
+  auto R = MatrixXd::Map(R_t.data(), N, N);
+
 }
