@@ -147,7 +147,8 @@ profile_opts = '-O3 -DNDEBUG -Wall -g' + tensorincludeflag
 env.Prepend(CPPPATH=['#', '#src'])
 env.Prepend(LIBPATH=['#', '#src'])
 env.Append(LEXFLAGS=['-s'])
-env.Append(CPPFLAGS=['-pthread'])
+env.Append(CPPFLAGS=['-fopenmp'])
+env.Append(LINKFLAGS=['-fopenmp'])
 env.Append(LIBS=['pthread'])
 
 # Platform specific build options...

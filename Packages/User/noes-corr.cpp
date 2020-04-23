@@ -164,8 +164,6 @@ int main(int argc, char *argv[]) {
       internuclear_vectors.chip(i, 0).device(threader) =
           coords - coords.chip(i, 0).eval().broadcast(bcChip);
     }
-    cout << "\ninvs from frame : " << mtopts->mtraj.currentFrame() << "\n"
-         << internuclear_vectors << endl;
     // get z coords, divided by length of inv^4 (cosine(theta)/r^3); auto causes
     // lazy eval.
     auto Xs = internuclear_vectors.chip(2, 2) /
@@ -185,7 +183,7 @@ int main(int argc, char *argv[]) {
   Tensor<double, 3, RowMajor> zeros(3, N, N);
   zeros.setZero();
   auto J = (J_base != J_base).select(zeros, J_base);
-Tensor<double, 3, RowMajor> J_t = J;
+  Tensor <double, 3, RowMajor> J_t = J;
   cout << "J tensor:\n" << J_t << endl;
   // Comput sigma_{ij} and rho_i following Chalmers et al.
   // Sigma is the cross-relaxation rate, and is
