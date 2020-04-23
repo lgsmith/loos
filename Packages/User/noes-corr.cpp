@@ -26,7 +26,10 @@
 */
 
 #include "loos.hpp"
+#include <Eigen/Core>
 #include <Eigen/Dense>
+#include <Eigen/Eigenvalues>
+#include <Eigen/LU>
 #define EIGEN_USE_THREADS
 #include <unsupported/Eigen/CXX11/Tensor>
 #include <unsupported/Eigen/CXX11/ThreadPool>
@@ -58,6 +61,8 @@ public:
        "time-spacing of samples from trajectory, in GHz (frames/ns). A frequency of zero is an error.")
       ("mix,m", po::value<double>(&m)->default_value(0),
       "Mixing time for experiment. A value of zero means no SD.")
+      ("initial-magnetization,M", po::value<double>(&M)->default_value(1),
+       "Initial magnetization (M_0) at t=0. If 1 is used, All NOEs relative.")
       ;
   }
   // clang-format on
@@ -65,11 +70,12 @@ public:
   // options are set to (for logging purposes)
   string print() const {
     ostringstream oss;
-    oss << boost::format("ts=%s,w=%d,B=%d,f=%d,t=%d") % ts % w % B % f % t;
+    oss << boost::format("ts=%s,w=%d,B=%d,f=%d,t=%d,m=%d,M=%d") % ts % w % B %
+               f % t % m % M;
     return (oss.str());
   }
   string ts;
-  double w, B, f, m;
+  double w, B, f, m, M;
   int t;
 };
 // @endcond
@@ -140,6 +146,8 @@ int main(int argc, char *argv[]) {
   // threading setup for tensor ops
   ThreadPool pool(topts->t);
   ThreadPoolDevice threader(&pool, topts->t);
+  // threading for openmp parallelization of eigen matrix/vector products
+  setNbThreads(topts->t);
 
   // Now iterate over all frames in the skipped & strided trajectory
   while (traj->readFrame()) {
@@ -170,11 +178,15 @@ int main(int argc, char *argv[]) {
   // three freqs.
   auto J_base = p1 * p1 + p2 * p2 - K * p1 * p2;
 
-  Tensor<bool, 3, RowMajor> nans =
-      J_base == std::numeric_limits<double>::quiet_NaN();
+  Tensor<double, 3, RowMajor> nans(3, N, N);
+  double not_a_number = std::numeric_limits<double>::quiet_NaN();
+  nans.setConstant(not_a_number);
+  cout << nans << endl;
   Tensor<double, 3, RowMajor> zeros(3, N, N);
   zeros.setZero();
-  auto J = nans.select(zeros, J_base);
+  auto J = (J_base != J_base).select(zeros, J_base);
+Tensor<double, 3, RowMajor> J_t = J;
+  cout << "J tensor:\n" << J_t << endl;
   // Comput sigma_{ij} and rho_i following Chalmers et al.
   // Sigma is the cross-relaxation rate, and is
   // the sum over the full power and omega spectral densities.
@@ -183,8 +195,16 @@ int main(int argc, char *argv[]) {
   // and is the sum over all non-diagonal elements.
   auto rho = (J.chip(0, 0) + 3 * J.chip(1, 0) + 6 * J.chip(2, 0))
                  .sum(Eigen::array<int, 1>({1}));
+
   Tensor<double, 2, RowMajor> R_t(N, N);
   R_t.device(threader) = sigma + rho;
+  cout << "R tensor:\n" << R_t << endl;
   auto R = MatrixXd::Map(R_t.data(), N, N);
-
+  SelfAdjointEigenSolver<MatrixXd> es(R);
+  MatrixXd evolved_evs =
+      (es.eigenvalues() * topts->m).array().exp().matrix().asDiagonal();
+  MatrixXd intensities = es.eigenvectors() * evolved_evs *
+                         es.eigenvectors().inverse() *
+                         (topts->M * MatrixXd::Identity(N, N));
+  cout << intensities << endl;
 }
