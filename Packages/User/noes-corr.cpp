@@ -130,12 +130,13 @@ int main(int argc, char *argv[]) {
   // Magic circle oscillator precomputation:
   // Larmor frequency, in Hz
   const double omega = topts->gamma * topts->B * mhz2Hz;
+  const double omegaNorm = omega / (topts->f * ghz2Hz);
   // DFT bin corresponding to the above omega
-  const double binNum =
-      (int)omega * mtopts->mtraj.nframes() / (topts->f * ghz2Hz);
+  // const double binNum =
+      // (int)omega * mtopts->mtraj.nframes() / (topts->f * ghz2Hz);
   // we need three frequencies; 0, omega, and two times omega
-  double k = 2 * sin(PI * binNum / mtopts->mtraj.nframes());
-  double k2 = 2 * sin(PI * 2 * binNum / mtopts->mtraj.nframes());
+  double k = 2 * sin(PI * omegaNorm);
+  double k2 = 2 * sin(PI * 2 * omegaNorm);
   TensorFixedSize<double, Sizes<3>, RowMajor> K_base;
   Tensor<double, 3, RowMajor> K(3, N, N);
   // constant sinusoids to be generated.
@@ -186,7 +187,9 @@ int main(int argc, char *argv[]) {
     // cout << Xs_t << endl;
     // compute magic circle oscillator recurrence relations for this frame
     p2.device(threader) = p2 - K * p1 + Xs.eval().broadcast(bcRecurrence);
+    cout << "\nthis is p2:\n" << p2 << "\n";
     p1.device(threader) = p1 + K * p2;
+    cout << "\nthis is p1:\n" << p1 << "\n";
   }
   // this expression records the squared value of the spectral density at the
   // three freqs.
@@ -217,8 +220,7 @@ int main(int argc, char *argv[]) {
                              .exp()
                              .matrix()
                              .asDiagonal();
-  MatrixXd intensities = es.eigenvectors() * evolved_evs *
-                         es.eigenvectors().inverse() *
+  MatrixXd intensities = es.eigenvectors() * evolved_evs * es.eigenvectors().inverse() *
                          (topts->M * MatrixXd::Identity(N, N));
   cout << intensities << endl;
 }
