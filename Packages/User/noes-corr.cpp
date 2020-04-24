@@ -53,14 +53,14 @@ public:
        "(Over)write time series to provided file name. If empty, then not written.")
       ("nthreads,n", po::value<int>(&t)->default_value(1),
        "Number of threads to use for the calculation.")
-      ("gamma,g", po::value<double>(&w)->default_value(42.58),
-      "Set the larmor frequency to arg.")
+      ("gamma,g", po::value<double>(&gamma)->default_value(42.58),
+      "Set the gyromagnetic ratio, in MHz/T.")
       ("field-strength,B", po::value<double>(&B)->default_value(14.1),
-       "Set the value of the experimental field strength.")
+       "Set the value of the experimental field strength, in T.")
       ("sampling-freq,f", po::value<double>(&f)->default_value(1),
        "time-spacing of samples from trajectory, in GHz (frames/ns). A frequency of zero is an error.")
       ("mix,m", po::value<double>(&m)->default_value(0),
-      "Mixing time for experiment. A value of zero means no SD.")
+      "NOE mixing time, in milliseconds.")
       ("initial-magnetization,M", po::value<double>(&M)->default_value(1),
        "Initial magnetization (M_0) at t=0. If 1 is used, All NOEs relative.")
       ;
@@ -70,12 +70,12 @@ public:
   // options are set to (for logging purposes)
   string print() const {
     ostringstream oss;
-    oss << boost::format("ts=%s,w=%d,B=%d,f=%d,t=%d,m=%d,M=%d") % ts % w % B %
-               f % t % m % M;
+    oss << boost::format("ts=%s,w=%d,B=%d,f=%d,t=%d,m=%d,M=%d") % ts % gamma %
+               B % f % t % m % M;
     return (oss.str());
   }
   string ts;
-  double w, B, f, m, M;
+  double gamma, B, f, m, M;
   int t;
 };
 // @endcond
@@ -110,18 +110,32 @@ int main(int argc, char *argv[]) {
 
   // Select the desired atoms to operate over...
   AtomicGroup nuclei = selectAtoms(model, sopts->selection);
-  const auto N = nuclei.size();
+  const int N = (int)nuclei.size();
 
   // NMR precalculations
-  double dd = 1; // dipolar interaction constant, unit distance
+  const double mu0 = 1.25663706212 * pow(10, -6); // wikipedia H/m
+  const double hbar = 1.054571817 * pow(10, -34); // wikipedia, J*s
+  // dipolar interaction constant, unit distance
+  const double dd = pow(topts->gamma, 2) * mu0 * pow(hbar, 2) / (4 * PI);
+  const double dd2 = dd * dd;
+
+  // time conversions
+  const double ghz2Hz = pow(10, -9);
+  const double mhz2Hz = pow(10, -6);
+  const double ms2s = pow(10, -3);
 
   // Broadcast dims for multiplying the recurrence tensors by K
   Eigen::array<int, 3> bcRecurrence({3, N, N});
-  // Magic circle oscillator precomputation
-  double omega = topts->w * topts->B;
+
+  // Magic circle oscillator precomputation:
+  // Larmor frequency, in Hz
+  const double omega = topts->gamma * topts->B * mhz2Hz;
+  // DFT bin corresponding to the above omega
+  const double binNum =
+      (int)omega * mtopts->mtraj.nframes() / (topts->f * ghz2Hz);
   // we need three frequencies; 0, omega, and two times omega
-  double k = sin(PI * omega / mtopts->mtraj.nframes());
-  double k2 = sin(PI * 2 * omega / mtopts->mtraj.nframes());
+  double k = 2 * sin(PI * binNum / mtopts->mtraj.nframes());
+  double k2 = 2 * sin(PI * 2 * binNum / mtopts->mtraj.nframes());
   TensorFixedSize<double, Sizes<3>, RowMajor> K_base;
   Tensor<double, 3, RowMajor> K(3, N, N);
   // constant sinusoids to be generated.
@@ -155,7 +169,7 @@ int main(int argc, char *argv[]) {
     // Update the coordinates ONLY for the subset
     traj->updateGroupCoords(nuclei);
     // Get coords into a tensor (presuming unrolling below)
-    for (auto i = 0; i < nuclei.size(); i++)
+    for (auto i = 0; i < N; i++)
       for (auto j = 0; j < 3; j++)
         coords(i, j) = nuclei[i]->coords()[j];
 
@@ -168,6 +182,8 @@ int main(int argc, char *argv[]) {
     // lazy eval.
     auto Xs = internuclear_vectors.chip(2, 2) /
               (internuclear_vectors.square().sum(dimCoords).sqrt()).pow(4);
+    // Tensor<double, 3, RowMajor> Xs_t = Xs;
+    // cout << Xs_t << endl;
     // compute magic circle oscillator recurrence relations for this frame
     p2.device(threader) = p2 - K * p1 + Xs.eval().broadcast(bcRecurrence);
     p1.device(threader) = p1 + K * p2;
@@ -175,32 +191,32 @@ int main(int argc, char *argv[]) {
   // this expression records the squared value of the spectral density at the
   // three freqs.
   auto J_base = p1 * p1 + p2 * p2 - K * p1 * p2;
+  // Tensor<double, 3, RowMajor> J_t = J_base;
+  // cout << J_t << endl;
 
-  Tensor<double, 3, RowMajor> nans(3, N, N);
-  double not_a_number = std::numeric_limits<double>::quiet_NaN();
-  nans.setConstant(not_a_number);
-  cout << nans << endl;
   Tensor<double, 3, RowMajor> zeros(3, N, N);
   zeros.setZero();
   auto J = (J_base != J_base).select(zeros, J_base);
-  Tensor <double, 3, RowMajor> J_t = J;
-  cout << "J tensor:\n" << J_t << endl;
+  // Tensor<double, 3, RowMajor> J_t = J;
+  // cout << J_t << endl;
   // Comput sigma_{ij} and rho_i following Chalmers et al.
   // Sigma is the cross-relaxation rate, and is
   // the sum over the full power and omega spectral densities.
-  auto sigma = J.chip(0, 0) - 6 * J.chip(2, 0);
+  auto sigma = 6 * J.chip(2, 0) - J.chip(0, 0);
   // rho is the diagonal of the relaxation matrix,
   // and is the sum over all non-diagonal elements.
   auto rho = (J.chip(0, 0) + 3 * J.chip(1, 0) + 6 * J.chip(2, 0))
                  .sum(Eigen::array<int, 1>({1}));
 
   Tensor<double, 2, RowMajor> R_t(N, N);
-  R_t.device(threader) = sigma + rho;
-  cout << "R tensor:\n" << R_t << endl;
+  R_t.device(threader) = (sigma + rho) * dd2;
   auto R = MatrixXd::Map(R_t.data(), N, N);
   SelfAdjointEigenSolver<MatrixXd> es(R);
-  MatrixXd evolved_evs =
-      (es.eigenvalues() * topts->m).array().exp().matrix().asDiagonal();
+  MatrixXd evolved_evs = (es.eigenvalues() * (-topts->m * ms2s))
+                             .array()
+                             .exp()
+                             .matrix()
+                             .asDiagonal();
   MatrixXd intensities = es.eigenvectors() * evolved_evs *
                          es.eigenvectors().inverse() *
                          (topts->M * MatrixXd::Identity(N, N));
