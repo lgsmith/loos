@@ -133,7 +133,7 @@ int main(int argc, char *argv[]) {
   const double omegaNorm = omega / (topts->f * ghz2Hz);
   // DFT bin corresponding to the above omega
   // const double binNum =
-      // (int)omega * mtopts->mtraj.nframes() / (topts->f * ghz2Hz);
+  // (int)omega * mtopts->mtraj.nframes() / (topts->f * ghz2Hz);
   // we need three frequencies; 0, omega, and two times omega
   double k = 2 * sin(PI * omegaNorm);
   double k2 = 2 * sin(PI * 2 * omegaNorm);
@@ -165,9 +165,10 @@ int main(int argc, char *argv[]) {
   setNbThreads(topts->t);
 
   // Now iterate over all frames in the skipped & strided trajectory
-  while (traj->readFrame()) {
+  for (auto i : mtopts->frameList()) {
 
     // Update the coordinates ONLY for the subset
+    traj->readFrame(i);
     traj->updateGroupCoords(nuclei);
     // Get coords into a tensor (presuming unrolling below)
     for (auto i = 0; i < N; i++)
@@ -188,9 +189,17 @@ int main(int argc, char *argv[]) {
     // compute magic circle oscillator recurrence relations for this frame
     p2.device(threader) = p2 - K * p1 + Xs.eval().broadcast(bcRecurrence);
     cout << "\nthis is p2:\n" << p2 << "\n";
+    for (auto i = 0; i < 3; i++) {
+      cout << "Chip: " << i << "\n" << p2.chip(0, i) << endl;
+    }
     p1.device(threader) = p1 + K * p2;
     cout << "\nthis is p1:\n" << p1 << "\n";
+    for (auto i = 0; i < 3; i++) {
+      cout << "Chip: " << i << "\n" << p1.chip(0, i) << endl;
+    }
   }
+  cout << "\nthis is K:\n";
+  cout << K << endl;
   // this expression records the squared value of the spectral density at the
   // three freqs.
   auto J_base = p1 * p1 + p2 * p2 - K * p1 * p2;
@@ -220,7 +229,8 @@ int main(int argc, char *argv[]) {
                              .exp()
                              .matrix()
                              .asDiagonal();
-  MatrixXd intensities = es.eigenvectors() * evolved_evs * es.eigenvectors().inverse() *
+  MatrixXd intensities = es.eigenvectors() * evolved_evs *
+                         es.eigenvectors().inverse() *
                          (topts->M * MatrixXd::Identity(N, N));
   cout << intensities << endl;
 }
