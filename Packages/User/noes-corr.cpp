@@ -165,10 +165,10 @@ int main(int argc, char *argv[]) {
   setNbThreads(topts->t);
 
   // Now iterate over all frames in the skipped & strided trajectory
-  for (auto i : mtopts->frameList()) {
+  for (auto f : mtopts->frameList()) {
 
     // Update the coordinates ONLY for the subset
-    traj->readFrame(i);
+    traj->readFrame(f);
     traj->updateGroupCoords(nuclei);
     // Get coords into a tensor (presuming unrolling below)
     for (auto i = 0; i < N; i++)
@@ -183,16 +183,16 @@ int main(int argc, char *argv[]) {
     // get z coords, divided by length of inv^4 (cosine(theta)/r^3); auto causes
     // lazy eval.
     auto Xs = internuclear_vectors.chip(2, 2) /
-              (internuclear_vectors.square().sum(dimCoords).sqrt()).pow(4);
+              internuclear_vectors.square().sum(dimCoords);
     // Tensor<double, 3, RowMajor> Xs_t = Xs;
     // cout << Xs_t << endl;
     // compute magic circle oscillator recurrence relations for this frame
-    p2.device(threader) = p2 - K * p1 + Xs.eval().broadcast(bcRecurrence);
+    p2.device(threader) = p2 - (K * p1) + Xs.eval().broadcast(bcRecurrence);
     cout << "\nthis is p2:\n" << p2 << "\n";
     for (auto i = 0; i < 3; i++) {
       cout << "Chip: " << i << "\n" << p2.chip(0, i) << endl;
     }
-    p1.device(threader) = p1 + K * p2;
+    p1.device(threader) = p1 + (K * p2);
     cout << "\nthis is p1:\n" << p1 << "\n";
     for (auto i = 0; i < 3; i++) {
       cout << "Chip: " << i << "\n" << p1.chip(0, i) << endl;
@@ -202,7 +202,7 @@ int main(int argc, char *argv[]) {
   cout << K << endl;
   // this expression records the squared value of the spectral density at the
   // three freqs.
-  auto J_base = p1 * p1 + p2 * p2 - K * p1 * p2;
+  auto J_base = (p1 * p1) + (p2 * p2) - (K * p1 * p2);
   // Tensor<double, 3, RowMajor> J_t = J_base;
   // cout << J_t << endl;
 
@@ -214,10 +214,10 @@ int main(int argc, char *argv[]) {
   // Comput sigma_{ij} and rho_i following Chalmers et al.
   // Sigma is the cross-relaxation rate, and is
   // the sum over the full power and omega spectral densities.
-  auto sigma = 6 * J.chip(2, 0) - J.chip(0, 0);
+  auto sigma = (6 * J.chip(2, 0)) - J.chip(0, 0);
   // rho is the diagonal of the relaxation matrix,
   // and is the sum over all non-diagonal elements.
-  auto rho = (J.chip(0, 0) + 3 * J.chip(1, 0) + 6 * J.chip(2, 0))
+  auto rho = (J.chip(0, 0) + (3 * J.chip(1, 0)) + (6 * J.chip(2, 0)))
                  .sum(Eigen::array<int, 1>({1}));
 
   Tensor<double, 2, RowMajor> R_t(N, N);
