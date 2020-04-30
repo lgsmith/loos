@@ -30,6 +30,7 @@
 #include <Eigen/Dense>
 #include <Eigen/Eigenvalues>
 #include <Eigen/LU>
+#include <cmath>
 #define EIGEN_USE_THREADS
 #include <unsupported/Eigen/CXX11/Tensor>
 #include <unsupported/Eigen/CXX11/ThreadPool>
@@ -113,16 +114,16 @@ int main(int argc, char *argv[]) {
   const int N = (int)nuclei.size();
 
   // NMR precalculations
-  const double mu0 = 1.25663706212 * pow(10, -6); // wikipedia H/m
-  const double hbar = 1.054571817 * pow(10, -34); // wikipedia, J*s
+  const double mu0 = 1.25663706212e-6; // wikipedia, H/m
+  const double hbar = 1.054571817e-34; // wikipedia, J*s
   // dipolar interaction constant, unit distance
-  const double dd = pow(topts->gamma, 2) * mu0 * pow(hbar, 2) / (4 * PI);
+  const double dd = topts->gamma * topts->gamma * mu0 * hbar * hbar / (4 * PI);
   const double dd2 = dd * dd;
 
   // time conversions
-  const double ghz2Hz = pow(10, -9);
-  const double mhz2Hz = pow(10, -6);
-  const double ms2s = pow(10, -3);
+  const double ghz2Hz = 1e-9;
+  const double mhz2Hz = 1e-6;
+  const double ms2s = 1e-3;
 
   // Broadcast dims for multiplying the recurrence tensors by K
   Eigen::array<int, 3> bcRecurrence({3, N, N});
@@ -130,13 +131,15 @@ int main(int argc, char *argv[]) {
   // Magic circle oscillator precomputation:
   // Larmor frequency, in Hz
   const double omega = topts->gamma * topts->B * mhz2Hz;
-  const double omegaNorm = omega / (topts->f * ghz2Hz);
+  // convert to bin number omega
+  const double omega_bin = floor(omega / (topts->f * ghz2Hz));
+  // for magic circle, the customary 2 Pi bin_num/nSamples is divided by 2 to produce
+  // two 90 degree half-step updates per sample from the time-series.
+  const double omega_rad_sample = omega_bin * PI / (double) mtopts->frameList().size();
   // DFT bin corresponding to the above omega
-  // const double binNum =
-  // (int)omega * mtopts->mtraj.nframes() / (topts->f * ghz2Hz);
   // we need three frequencies; 0, omega, and two times omega
-  double k = 2 * sin(PI * omegaNorm);
-  double k2 = 2 * sin(PI * 2 * omegaNorm);
+  const double k = 2 * std::sin(omega_rad_sample);
+  const double k2 = 2 * std::sin(2 * omega_rad_sample);
   TensorFixedSize<double, Sizes<3>, RowMajor> K_base;
   Tensor<double, 3, RowMajor> K(3, N, N);
   // constant sinusoids to be generated.
@@ -183,23 +186,30 @@ int main(int argc, char *argv[]) {
     // get z coords, divided by length of inv^4 (cosine(theta)/r^3); auto causes
     // lazy eval.
     auto Xs = internuclear_vectors.chip(2, 2) /
-              internuclear_vectors.square().sum(dimCoords);
-    // Tensor<double, 3, RowMajor> Xs_t = Xs;
-    // cout << Xs_t << endl;
+              internuclear_vectors.square().sum(dimCoords).square();
+    Tensor<double, 3, RowMajor> Xs_t = Xs;
+    cout << "Xs:\n";
+    cout << Xs_t << endl;
     // compute magic circle oscillator recurrence relations for this frame
     p2.device(threader) = p2 - (K * p1) + Xs.eval().broadcast(bcRecurrence);
     cout << "\nthis is p2:\n" << p2 << "\n";
     for (auto i = 0; i < 3; i++) {
-      cout << "Chip: " << i << "\n" << p2.chip(0, i) << endl;
+      cout << "Chip: " << i << "\n" << p2.chip(i, 0) << endl;
     }
     p1.device(threader) = p1 + (K * p2);
     cout << "\nthis is p1:\n" << p1 << "\n";
     for (auto i = 0; i < 3; i++) {
-      cout << "Chip: " << i << "\n" << p1.chip(0, i) << endl;
+      cout << "Chip: " << i << "\n" << p1.chip(i, 0) << endl;
     }
   }
   cout << "\nthis is K:\n";
   cout << K << endl;
+  cout << "\nthis is k and k2\n";
+  cout << k << " " << k2 << "\n";
+  cout << "This is pi: " << PI << "\n";
+  cout << "This is omega: " << omega << "\n";
+  cout << "This is omega_bin: " << omega_bin << "\n";
+  cout << "this is omega_rad_sample: " << omega_rad_sample << "\n";
   // this expression records the squared value of the spectral density at the
   // three freqs.
   auto J_base = (p1 * p1) + (p2 * p2) - (K * p1 * p2);
