@@ -32,8 +32,6 @@
 #include <Eigen/LU>
 #include <cmath>
 #define EIGEN_USE_THREADS
-#include <unsupported/Eigen/CXX11/Tensor>
-#include <unsupported/Eigen/CXX11/ThreadPool>
 
 using namespace std;
 using namespace loos;
@@ -116,17 +114,15 @@ int main(int argc, char *argv[]) {
   // NMR precalculations
   const double mu0 = 1.25663706212e-6; // wikipedia, H/m
   const double hbar = 1.054571817e-34; // wikipedia, J*s
-  // dipolar interaction constant, unit distance
-  const double dd = topts->gamma * topts->gamma * mu0 * hbar * hbar / (4 * PI);
+  const double N_A = 6.02214076e24; // Wikipedia, Avogadro's Constant
+  // dipolar interaction constant, unit distance per Mole
+  const double dd = N_A * topts->gamma * topts->gamma * mu0 * hbar * hbar / (4 * PI);
   const double dd2 = dd * dd;
 
   // time conversions
   const double ghz2Hz = 1e-9;
   const double mhz2Hz = 1e-6;
   const double ms2s = 1e-3;
-
-  // Broadcast dims for multiplying the recurrence tensors by K
-  Eigen::array<int, 3> bcRecurrence({3, N, N});
 
   // Magic circle oscillator precomputation:
   // Larmor frequency, in Hz
@@ -140,33 +136,16 @@ int main(int argc, char *argv[]) {
   // we need three frequencies; 0, omega, and two times omega
   const double k = 2 * std::sin(omega_rad_sample);
   const double k2 = 2 * std::sin(2 * omega_rad_sample);
-  TensorFixedSize<double, Sizes<3>, RowMajor> K_base;
-  Tensor<double, 3, RowMajor> K(3, N, N);
-  // constant sinusoids to be generated.
-  K_base.setValues({0, k, k2});
-  K = K_base.broadcast(bcRecurrence);
+  // matricies to hold the intermediate values we need for the three frequencies
+  // MatrixXd y1zero = MatrixXd::Zero(N, N); // unneeded, always zero for k = 0.
+  MatrixXd y2zero = MatrixXd::Zero(N, N);
+  MatrixXd y1omega = MatrixXd::Zero(N, N);
+  MatrixXd y2omega = MatrixXd::Zero(N, N);
+  MatrixXd y1omega2 = MatrixXd::Zero(N, N); 
+  MatrixXd y2omega2 = MatrixXd::Zero(N, N);
 
-  // setup for eigen tensor ops below
-  Eigen::array<int, 2> bcChip({N, 3});
-  Tensor<double, 2, RowMajor> coords(N, 3);
-  Tensor<double, 3, RowMajor> internuclear_vectors(N, N, 3);
-  // Define tensors to hold recurrence relation values for magic circle
-  // oscillator.
-  Tensor<double, 3, RowMajor> p1(3, N, N);
-  Tensor<double, 3, RowMajor> p2(3, N, N);
-  p1.setZero();
-  p2.setZero();
-
-  // Dimension object to pick out the coordinates from the internuclear vectors
-  // tensor for summing
-  Eigen::array<int, 1> dimCoords({2});
-
-  // threading setup for tensor ops
-  ThreadPool pool(topts->t);
-  ThreadPoolDevice threader(&pool, topts->t);
-  // threading for openmp parallelization of eigen matrix/vector products
-  setNbThreads(topts->t);
-
+  MatrixXd cos_r3 = MatrixXd::Zero(N,N);
+  GCoord diff(0, 0, 0);
   // Now iterate over all frames in the skipped & strided trajectory
   for (auto f : mtopts->frameList()) {
 
@@ -174,65 +153,52 @@ int main(int argc, char *argv[]) {
     traj->readFrame(f);
     traj->updateGroupCoords(nuclei);
     // Get coords into a tensor (presuming unrolling below)
-    for (auto i = 0; i < N; i++)
-      for (auto j = 0; j < 3; j++)
-        coords(i, j) = nuclei[i]->coords()[j];
-
-    // compute interatomic vectors
     for (auto i = 0; i < N; i++) {
-      internuclear_vectors.chip(i, 0).device(threader) =
-          coords - coords.chip(i, 0).eval().broadcast(bcChip);
+      for (auto j = i+1; j < N; j++){
+        diff = nuclei[i]->coords() - nuclei[j]->coords();
+        cos_r3(i, j) = diff[2]/diff.length2();
+      }
     }
-    // get z coords, divided by length of inv^4 (cosine(theta)/r^3); auto causes
-    // lazy eval.
-    auto Xs = internuclear_vectors.chip(2, 2) /
-              internuclear_vectors.square().sum(dimCoords).square();
-    Tensor<double, 3, RowMajor> Xs_t = Xs;
-    cout << "Xs:\n";
-    cout << Xs_t << endl;
-    // compute magic circle oscillator recurrence relations for this frame
-    p2.device(threader) = p2 - (K * p1) + Xs.eval().broadcast(bcRecurrence);
-    cout << "\nthis is p2:\n" << p2 << "\n";
-    for (auto i = 0; i < 3; i++) {
-      cout << "Chip: " << i << "\n" << p2.chip(i, 0) << endl;
-    }
-    p1.device(threader) = p1 + (K * p2);
-    cout << "\nthis is p1:\n" << p1 << "\n";
-    for (auto i = 0; i < 3; i++) {
-      cout << "Chip: " << i << "\n" << p1.chip(i, 0) << endl;
-    }
+    // cout << cos_r3 << "\n\n";
+    // first update the y2s for the two frequencies
+    // since k-value is zero for zero freq, this is just accumulating cosine term
+    y2zero.triangularView<Upper>() += cos_r3;
+    // these two use k and k2 defined above
+    y2omega.triangularView<Upper>() += cos_r3 - k * y1omega;
+    y2omega2.triangularView<Upper>() += cos_r3 - k * y1omega2;
+    // now compute the y1 from these y2, noting that y1zero will be zero
+    y1omega.triangularView<Upper>() += k * y2omega;
+    y1omega2.triangularView<Upper>() += k2 * y2omega2;
   }
-  cout << "\nthis is K:\n";
-  cout << K << endl;
-  cout << "\nthis is k and k2\n";
-  cout << k << " " << k2 << "\n";
-  cout << "This is pi: " << PI << "\n";
-  cout << "This is omega: " << omega << "\n";
-  cout << "This is omega_bin: " << omega_bin << "\n";
-  cout << "this is omega_rad_sample: " << omega_rad_sample << "\n";
-  // this expression records the squared value of the spectral density at the
-  // three freqs.
-  auto J_base = (p1 * p1) + (p2 * p2) - (K * p1 * p2);
-  // Tensor<double, 3, RowMajor> J_t = J_base;
-  // cout << J_t << endl;
+  // compute the spectral densities at each of the three needed freqs
+  // following formula E = y1**2 +y2**2 - k*y1*y2
+  MatrixXd Jzero = y2zero.cwiseAbs2();
+  MatrixXd Jomega = y1omega.cwiseAbs2() + y2omega.cwiseAbs2() 
+                  - k * y1omega.cwiseProduct(y2omega);
+  MatrixXd Jomega2 = y1omega2.cwiseAbs2() + y2omega2.cwiseAbs2() 
+                   - k * y1omega2.cwiseProduct(y2omega2);
 
-  Tensor<double, 3, RowMajor> zeros(3, N, N);
-  zeros.setZero();
-  auto J = (J_base != J_base).select(zeros, J_base);
-  // Tensor<double, 3, RowMajor> J_t = J;
-  // cout << J_t << endl;
+  
+    
   // Comput sigma_{ij} and rho_i following Chalmers et al.
   // Sigma is the cross-relaxation rate, and is
   // the sum over the full power and omega spectral densities.
-  auto sigma = (6 * J.chip(2, 0)) - J.chip(0, 0);
-  // rho is the diagonal of the relaxation matrix,
-  // and is the sum over all non-diagonal elements.
-  auto rho = (J.chip(0, 0) + (3 * J.chip(1, 0)) + (6 * J.chip(2, 0)))
-                 .sum(Eigen::array<int, 1>({1}));
-
-  Tensor<double, 2, RowMajor> R_t(N, N);
-  R_t.device(threader) = (sigma + rho) * dd2;
-  auto R = MatrixXd::Map(R_t.data(), N, N);
+  MatrixXd sigma = 6 *Jomega2 - Jzero;
+  MatrixXd rho((Jzero + (3 * Jomega) + (6 * Jomega2))
+    .selfadjointView<Upper>());
+  // cout << "this is rho:\n";
+  // cout << rho << endl;
+  // cout << "this is ro_i:\n";
+  // cout << rho.colwise().sum() << endl;
+  MatrixXd R(sigma.selfadjointView<Upper>());
+  // cout << "this is just sigma in R:\n";
+  // cout << R << endl;
+  R.diagonal(0) = rho.colwise().sum();
+  // cout << "this is R with sigma added, but not in correct units:\n";
+  // cout << R << endl;
+  R *= dd2;
+  // cout << "this is R:\n";
+  // cout << R << endl;
   SelfAdjointEigenSolver<MatrixXd> es(R);
   MatrixXd evolved_evs = (es.eigenvalues() * (-topts->m * ms2s))
                              .array()
