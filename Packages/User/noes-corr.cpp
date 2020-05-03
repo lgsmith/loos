@@ -112,11 +112,11 @@ int main(int argc, char *argv[]) {
   const int N = (int)nuclei.size();
 
   // NMR precalculations
-  const double mu0 = 1.25663706212e-6; // wikipedia, H/m
+  const double mu0 = 1.25663706212e4; // wikipedia, H/Angstrom (10^10 * value in H/m)
   const double hbar = 1.054571817e-34; // wikipedia, J*s
   const double N_A = 6.02214076e24; // Wikipedia, Avogadro's Constant
   // dipolar interaction constant, unit distance per Mole
-  const double dd = N_A * topts->gamma * topts->gamma * mu0 * hbar * hbar / (4 * PI);
+  const double dd = N_A * topts->gamma * topts->gamma * mu0 * hbar / (4 * PI);
   const double dd2 = dd * dd;
 
   // time conversions
@@ -194,18 +194,20 @@ int main(int argc, char *argv[]) {
   // cout << "this is just sigma in R:\n";
   // cout << R << endl;
   R.diagonal(0) = rho.colwise().sum();
-  // cout << "this is R with sigma added, but not in correct units:\n";
-  // cout << R << endl;
+  cout << "this is R with sigma added, but not in correct units:\n";
+  cout << R << endl;
   R *= dd2;
-  // cout << "this is R:\n";
-  // cout << R << endl;
+  cout << "this is R:\n";
+  cout << R << endl;
   SelfAdjointEigenSolver<MatrixXd> es(R);
-  MatrixXd evolved_evs = (es.eigenvalues() * (-topts->m * ms2s))
+  cout << es.eigenvalues() << endl;
+  MatrixXd evolved_vals = (es.eigenvalues() * (-topts->m * ms2s))
                              .array()
                              .exp()
                              .matrix()
                              .asDiagonal();
-  MatrixXd intensities = es.eigenvectors() * evolved_evs *
+  cout << "this is evolved_vals:\n" << evolved_vals << endl;
+  MatrixXd intensities = es.eigenvectors() * evolved_vals *
                          es.eigenvectors().inverse() *
                          (topts->M * MatrixXd::Identity(N, N));
   cout << intensities << endl;
