@@ -1,5 +1,4 @@
-/*
-  internuclear-vector-corr-projections
+/* internuclear-vector-corr-projections
   Writes the z projection of all selected internuclear vectors out as a
   timeseries, Optionally finding each autocorrelation as well.
 */
@@ -109,12 +108,15 @@ int main(int argc, char *argv[]) {
 
   // Select the desired atoms to operate over...
   AtomicGroup nuclei = selectAtoms(model, sopts->selection);
-  const int N = (int)nuclei.size();
+  const Eigen::Index N = (Eigen::Index) nuclei.size();
+  vector<vector<uint>> refindex = {{0, 1}};
+  const double refdist = nuclei[refindex[0][0]]->coords().distance(nuclei[refindex[0][1]]->coords());
 
   // NMR precalculations
-  const double mu0 = 1.25663706212e4; // wikipedia, H/Angstrom (10^10 * value in H/m)
+  const double mu0 =
+      1.25663706212e4; // wikipedia, H/Angstrom (10^10 * value in H/m)
   const double hbar = 1.054571817e-34; // wikipedia, J*s
-  const double N_A = 6.02214076e24; // Wikipedia, Avogadro's Constant
+  const double N_A = 6.02214076e24;    // Wikipedia, Avogadro's Constant
   // dipolar interaction constant, unit distance per Mole
   const double dd = N_A * topts->gamma * topts->gamma * mu0 * hbar / (4 * PI);
   const double dd2 = dd * dd;
@@ -129,9 +131,10 @@ int main(int argc, char *argv[]) {
   const double omega = topts->gamma * topts->B * mhz2Hz;
   // convert to bin number omega
   const double omega_bin = floor(omega / (topts->f * ghz2Hz));
-  // for magic circle, the customary 2 Pi bin_num/nSamples is divided by 2 to produce
-  // two 90 degree half-step updates per sample from the time-series.
-  const double omega_rad_sample = omega_bin * PI / (double) mtopts->frameList().size();
+  // for magic circle, the customary 2 Pi bin_num/nSamples is divided by 2 to
+  // produce two 90 degree half-step updates per sample from the time-series.
+  const double omega_rad_sample =
+      omega_bin * PI / (double)mtopts->frameList().size();
   // DFT bin corresponding to the above omega
   // we need three frequencies; 0, omega, and two times omega
   const double k = 2 * std::sin(omega_rad_sample);
@@ -141,10 +144,10 @@ int main(int argc, char *argv[]) {
   MatrixXd y2zero = MatrixXd::Zero(N, N);
   MatrixXd y1omega = MatrixXd::Zero(N, N);
   MatrixXd y2omega = MatrixXd::Zero(N, N);
-  MatrixXd y1omega2 = MatrixXd::Zero(N, N); 
+  MatrixXd y1omega2 = MatrixXd::Zero(N, N);
   MatrixXd y2omega2 = MatrixXd::Zero(N, N);
 
-  MatrixXd cos_r3 = MatrixXd::Zero(N,N);
+  MatrixXd cos_r3 = MatrixXd::Zero(N, N);
   GCoord diff(0, 0, 0);
   // Now iterate over all frames in the skipped & strided trajectory
   for (auto f : mtopts->frameList()) {
@@ -154,14 +157,15 @@ int main(int argc, char *argv[]) {
     traj->updateGroupCoords(nuclei);
     // Get coords into a tensor (presuming unrolling below)
     for (auto i = 0; i < N; i++) {
-      for (auto j = i+1; j < N; j++){
+      for (auto j = i + 1; j < N; j++) {
         diff = nuclei[i]->coords() - nuclei[j]->coords();
-        cos_r3(i, j) = diff[2]/diff.length2();
+        cos_r3(i, j) = diff[2] / diff.length2();
       }
     }
     // cout << cos_r3 << "\n\n";
     // first update the y2s for the two frequencies
-    // since k-value is zero for zero freq, this is just accumulating cosine term
+    // since k-value is zero for zero freq, this is just accumulating cosine
+    // term
     y2zero.triangularView<Upper>() += cos_r3;
     // these two use k and k2 defined above
     y2omega.triangularView<Upper>() += cos_r3 - k * y1omega;
@@ -173,19 +177,16 @@ int main(int argc, char *argv[]) {
   // compute the spectral densities at each of the three needed freqs
   // following formula E = y1**2 +y2**2 - k*y1*y2
   MatrixXd Jzero = y2zero.cwiseAbs2();
-  MatrixXd Jomega = y1omega.cwiseAbs2() + y2omega.cwiseAbs2() 
-                  - k * y1omega.cwiseProduct(y2omega);
-  MatrixXd Jomega2 = y1omega2.cwiseAbs2() + y2omega2.cwiseAbs2() 
-                   - k * y1omega2.cwiseProduct(y2omega2);
+  MatrixXd Jomega = y1omega.cwiseAbs2() + y2omega.cwiseAbs2() -
+                    k * y1omega.cwiseProduct(y2omega);
+  MatrixXd Jomega2 = y1omega2.cwiseAbs2() + y2omega2.cwiseAbs2() -
+                     k * y1omega2.cwiseProduct(y2omega2);
 
-  
-    
   // Comput sigma_{ij} and rho_i following Chalmers et al.
   // Sigma is the cross-relaxation rate, and is
   // the sum over the full power and omega spectral densities.
-  MatrixXd sigma = 6 *Jomega2 - Jzero;
-  MatrixXd rho((Jzero + (3 * Jomega) + (6 * Jomega2))
-    .selfadjointView<Upper>());
+  MatrixXd sigma = 6 * Jomega2 - Jzero;
+  MatrixXd rho((Jzero + (3 * Jomega) + (6 * Jomega2)).selfadjointView<Upper>());
   // cout << "this is rho:\n";
   // cout << rho << endl;
   // cout << "this is ro_i:\n";
@@ -202,13 +203,33 @@ int main(int argc, char *argv[]) {
   SelfAdjointEigenSolver<MatrixXd> es(R);
   cout << es.eigenvalues() << endl;
   MatrixXd evolved_vals = (es.eigenvalues() * (-topts->m * ms2s))
-                             .array()
-                             .exp()
-                             .matrix()
-                             .asDiagonal();
+                              .array()
+                              .exp()
+                              .matrix()
+                              .asDiagonal();
   cout << "this is evolved_vals:\n" << evolved_vals << endl;
   MatrixXd intensities = es.eigenvectors() * evolved_vals *
                          es.eigenvectors().inverse() *
                          (topts->M * MatrixXd::Identity(N, N));
   cout << intensities << endl;
+  // create tab delimited intensity report, below
+  cout << "reference intensity and distance:\n"
+       << intensities(refindex[0][0], refindex[0][1]) << " " << refdist << "\n";
+  cout << "# resname\tresid\tname\tindex\tresname\tresid\tname\tindex\tvol\tme"
+          "an_r";
+  for (auto i = 0; i < N; i++) {
+    pAtom ith = nuclei[i];
+    for (auto j = i; j < N; j++) {
+      pAtom jth = nuclei[j];
+      cout << "\n"
+           << ith->resname() << "\t" << ith->resid() << "\t" 
+           << ith->name() << "\t" << ith->index() 
+           << "\t" 
+           << jth->resname() << "\t" << jth->resid() << "\t" 
+           << jth->name() << "\t" << jth->index() << "\t"
+           << intensities(i, j) << "\t"
+           << pow(intensities(i,j) / intensities(refindex[0][0], refindex[0][1]), -1/6) * refdist;
+    }
+  }
+  cout << endl;
 }
