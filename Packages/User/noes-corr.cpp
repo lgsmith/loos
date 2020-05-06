@@ -29,7 +29,6 @@
 #include <Eigen/Dense>
 #include <Eigen/Eigenvalues>
 #include <Eigen/LU>
-#include <cmath>
 #define EIGEN_USE_THREADS
 
 using namespace std;
@@ -119,7 +118,7 @@ int main(int argc, char *argv[]) {
   const double N_A = 6.02214076e24;    // Wikipedia, Avogadro's Constant
   // dipolar interaction constant, unit distance per Mole
   const double dd = N_A * topts->gamma * topts->gamma * mu0 * hbar / (4 * PI);
-  const double dd2 = dd * dd;
+  const double dd2 = dd * dd * 0.1;
 
   // time conversions
   const double ghz2Hz = 1e-9;
@@ -228,7 +227,7 @@ int main(int argc, char *argv[]) {
            << jth->resname() << "\t" << jth->resid() << "\t" 
            << jth->name() << "\t" << jth->index() << "\t"
            << intensities(i, j) << "\t"
-           << pow(intensities(i,j) / intensities(refindex[0][0], refindex[0][1]), -1/6) * refdist;
+           << pow(intensities(i,j) / intensities(refindex[0][0], refindex[0][1]), -1.0/6) * refdist;
     }
   }
   cout << endl;
