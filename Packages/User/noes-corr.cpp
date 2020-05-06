@@ -107,9 +107,10 @@ int main(int argc, char *argv[]) {
 
   // Select the desired atoms to operate over...
   AtomicGroup nuclei = selectAtoms(model, sopts->selection);
-  const Eigen::Index N = (Eigen::Index) nuclei.size();
+  const Eigen::Index N = (Eigen::Index)nuclei.size();
   vector<vector<uint>> refindex = {{0, 1}};
-  const double refdist = nuclei[refindex[0][0]]->coords().distance(nuclei[refindex[0][1]]->coords());
+  const double refdist = nuclei[refindex[0][0]]->coords().distance(
+      nuclei[refindex[0][1]]->coords());
 
   // NMR precalculations
   const double mu0 =
@@ -117,8 +118,8 @@ int main(int argc, char *argv[]) {
   const double hbar = 1.054571817e-34; // wikipedia, J*s
   const double N_A = 6.02214076e24;    // Wikipedia, Avogadro's Constant
   // dipolar interaction constant, unit distance per Mole
-  const double dd = N_A * topts->gamma * topts->gamma * mu0 * hbar / (4 * PI);
-  const double dd2 = dd * dd * 0.1;
+  const double dd = topts->gamma * topts->gamma * mu0 * hbar / (4 * PI);
+  const double dd2 = dd * dd * 0.1 * N_A;
 
   // time conversions
   const double ghz2Hz = 1e-9;
@@ -132,8 +133,7 @@ int main(int argc, char *argv[]) {
   const double omega_bin = floor(omega / (topts->f * ghz2Hz));
   // for magic circle, the customary 2 Pi bin_num/nSamples is divided by 2 to
   // produce two 90 degree half-step updates per sample from the time-series.
-  const double omega_rad_sample =
-      omega_bin * PI / (double)mtopts->frameList().size();
+  const double omega_rad_sample = omega_bin * PI / mtopts->frameList().size();
   // DFT bin corresponding to the above omega
   // we need three frequencies; 0, omega, and two times omega
   const double k = 2 * std::sin(omega_rad_sample);
@@ -218,16 +218,17 @@ int main(int argc, char *argv[]) {
           "an_r";
   for (auto i = 0; i < N; i++) {
     pAtom ith = nuclei[i];
-    for (auto j = i; j < N; j++) {
+    for (auto j = i + 1; j < N; j++) {
       pAtom jth = nuclei[j];
       cout << "\n"
-           << ith->resname() << "\t" << ith->resid() << "\t" 
-           << ith->name() << "\t" << ith->index() 
-           << "\t" 
-           << jth->resname() << "\t" << jth->resid() << "\t" 
-           << jth->name() << "\t" << jth->index() << "\t"
-           << intensities(i, j) << "\t"
-           << pow(intensities(i,j) / intensities(refindex[0][0], refindex[0][1]), -1.0/6) * refdist;
+           << ith->resname() << "\t" << ith->resid() << "\t" << ith->name()
+           << "\t" << ith->index() << "\t" << jth->resname() << "\t"
+           << jth->resid() << "\t" << jth->name() << "\t" << jth->index()
+           << "\t" << intensities(i, j) << "\t"
+           << pow(intensities(i, j) /
+                      intensities(refindex[0][0], refindex[0][1]),
+                  -1.0 / 6) *
+                  refdist;
     }
   }
   cout << endl;
