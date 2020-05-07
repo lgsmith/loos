@@ -18,13 +18,17 @@ dcd.addTitle(cmdline)
 rg = default_rng()
 
 system = loos.createSystem(system_file)
+max_idx = len(system) - 1
 
 axis = loos.GCoord()
 for i in range(num_steps):
     # generate a random axis and displacement
     axis.random()
     rot = rg.uniform(-rot_size, rot_size)
+    rotation_center = system[int(rg.integers(0, max_idx))].coords()
 
-    system.rotate(axis, rot)
+    system.rotate(axis, rot, rotation_center)
+
+    system.centerAtOrigin()
 
     dcd.writeFrame(system)

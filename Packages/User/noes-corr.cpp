@@ -77,6 +77,12 @@ public:
 };
 // @endcond
 
+// time conversions
+const double ghz2Hz = 1e9;
+const double mhz2Hz = 1e6;
+const double ms2s = 1e-3;
+
+
 int main(int argc, char *argv[]) {
 
   string header = invocationHeader(argc, argv);
@@ -115,16 +121,12 @@ int main(int argc, char *argv[]) {
   // NMR precalculations
   const double mu0 =
       1.25663706212e4; // wikipedia, H/Angstrom (10^10 * value in H/m)
+  const double gamma = topts->gamma * 2 * PI * mhz2Hz; // convert Gamma from mHz/T to Rad/s*T
   const double hbar = 1.054571817e-34; // wikipedia, J*s
   const double N_A = 6.02214076e24;    // Wikipedia, Avogadro's Constant
   // dipolar interaction constant, unit distance per Mole
-  const double dd = topts->gamma * topts->gamma * mu0 * hbar / (4 * PI);
-  const double dd2 = dd * dd * 0.1 * N_A;
-
-  // time conversions
-  const double ghz2Hz = 1e-9;
-  const double mhz2Hz = 1e-6;
-  const double ms2s = 1e-3;
+  const double dd = gamma * gamma * mu0 * hbar / (4 * PI);
+  const double dd2 = dd * dd * N_A * 0.25;
 
   // Magic circle oscillator precomputation:
   // Larmor frequency, in Hz
@@ -225,10 +227,9 @@ int main(int argc, char *argv[]) {
            << "\t" << ith->index() << "\t" << jth->resname() << "\t"
            << jth->resid() << "\t" << jth->name() << "\t" << jth->index()
            << "\t" << intensities(i, j) << "\t"
-           << pow(intensities(i, j) /
-                      intensities(refindex[0][0], refindex[0][1]),
-                  -1.0 / 6) *
-                  refdist;
+           << pow(
+                intensities(i, j) / intensities(refindex[0][0], refindex[0][1]), -1.0 / 6
+              ) * refdist;
     }
   }
   cout << endl;
