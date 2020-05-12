@@ -114,7 +114,7 @@ int main(int argc, char *argv[]) {
   // Select the desired atoms to operate over...
   AtomicGroup nuclei = selectAtoms(model, sopts->selection);
   const Eigen::Index N = (Eigen::Index)nuclei.size();
-  vector<vector<uint>> refindex = {{0, 1}};
+  vector<vector<uint>> refindex = {{2, 3}};
   const double refdist = nuclei[refindex[0][0]]->coords().distance(
       nuclei[refindex[0][1]]->coords());
 
@@ -130,7 +130,7 @@ int main(int argc, char *argv[]) {
 
   // Magic circle oscillator precomputation:
   // Larmor frequency, in Hz
-  const double omega = topts->gamma * topts->B * mhz2Hz;
+  const double omega = gamma * topts->B * mhz2Hz;
   // convert to bin number omega
   const double omega_bin = floor(omega / (topts->f * ghz2Hz));
   // for magic circle, the customary 2 Pi bin_num/nSamples is divided by 2 to
