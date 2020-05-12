@@ -82,6 +82,13 @@ const double ghz2Hz = 1e9;
 const double mhz2Hz = 1e6;
 const double ms2s = 1e-3;
 
+// second order spherical harmonic, with multiples factored out.
+inline const double Y_2_0(GCoord a, GCoord b){
+  const GCoord diff = a - b;
+  const double length = diff.length();
+  const double r3 = length * length * length;
+  return 3 * diff[2] * diff[2] / (r3 * length * length) - 1.0 / r3;
+}
 
 int main(int argc, char *argv[]) {
 
@@ -148,9 +155,9 @@ int main(int argc, char *argv[]) {
   MatrixXd y1omega2 = MatrixXd::Zero(N, N);
   MatrixXd y2omega2 = MatrixXd::Zero(N, N);
 
-  MatrixXd cos_r3 = MatrixXd::Zero(N, N);
+  MatrixXd y_2_0 = MatrixXd::Zero(N, N);
   GCoord diff(0, 0, 0);
-  double length2;
+  double length;
   // Now iterate over all frames in the skipped & strided trajectory
   for (auto f : mtopts->frameList()) {
 
@@ -160,22 +167,21 @@ int main(int argc, char *argv[]) {
     // Get coords into a tensor (presuming unrolling below)
     for (auto i = 0; i < N; i++) {
       for (auto j = i + 1; j < N; j++) {
-        diff = nuclei[i]->coords() - nuclei[j]->coords();
-        length2 = diff.length2();
-        cos_r3(i, j) = diff[2] / (length2 * length2);
+        y_2_0(i, j) = Y_2_0(nuclei[i]->coords(), nuclei[j]->coords());
       }
     }
     // cout << cos_r3 << "\n\n";
     // first update the y2s for the two frequencies
     // since k-value is zero for zero freq, this is just accumulating cosine
-    // term
-    y2zero.triangularView<Upper>() += cos_r3;
+    // term. Since sigma will be antisymmetric, use upper and lower to record.
+    y2zero.triangularView<Upper>() += y_2_0;
     // these two use k and k2 defined above
-    y2omega.triangularView<Upper>() += cos_r3 - k * y1omega;
-    y2omega2.triangularView<Upper>() += cos_r3 - k * y1omega2;
+    y2omega.triangularView<Upper>() += y_2_0 - k * y1omega;
+
+    y2omega2.triangularView<Upper>() += y_2_0 - k * y1omega2;
     // now compute the y1 from these y2, noting that y1zero will be zero
-    y1omega.triangularView<Upper>() += k * y2omega;
-    y1omega2.triangularView<Upper>() += k2 * y2omega2;
+    y1omega = k * y2omega;
+    y1omega2 = k2 * y2omega2;
   }
   // compute the spectral densities at each of the three needed freqs
   // following formula E = y1**2 +y2**2 - k*y1*y2
