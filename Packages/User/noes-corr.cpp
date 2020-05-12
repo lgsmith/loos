@@ -150,6 +150,7 @@ int main(int argc, char *argv[]) {
 
   MatrixXd cos_r3 = MatrixXd::Zero(N, N);
   GCoord diff(0, 0, 0);
+  double length2;
   // Now iterate over all frames in the skipped & strided trajectory
   for (auto f : mtopts->frameList()) {
 
@@ -160,7 +161,8 @@ int main(int argc, char *argv[]) {
     for (auto i = 0; i < N; i++) {
       for (auto j = i + 1; j < N; j++) {
         diff = nuclei[i]->coords() - nuclei[j]->coords();
-        cos_r3(i, j) = diff[2] / diff.length2();
+        length2 = diff.length2();
+        cos_r3(i, j) = diff[2] / (length2 * length2);
       }
     }
     // cout << cos_r3 << "\n\n";
