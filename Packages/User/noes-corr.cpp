@@ -87,7 +87,7 @@ inline const double Y_2_0(GCoord a, GCoord b){
   const GCoord diff = a - b;
   const double length = diff.length();
   const double r3 = length * length * length;
-  return 3 * diff[2] * diff[2] / (r3 * length * length) - 1.0 / r3;
+  return 1.5 * diff[2] * diff[2] / (r3 * length * length) - 0.5 / r3;
 }
 
 int main(int argc, char *argv[]) {
@@ -133,7 +133,7 @@ int main(int argc, char *argv[]) {
   const double N_A = 6.02214076e24;    // Wikipedia, Avogadro's Constant
   // dipolar interaction constant, unit distance per Mole
   const double dd = gamma * gamma * mu0 * hbar / (4 * PI);
-  const double dd2 = dd * dd * N_A * 0.25;
+  const double dd2 = dd * dd * N_A * 5.0 / (PI * 16);
 
   // Magic circle oscillator precomputation:
   // Larmor frequency, in Hz
@@ -157,7 +157,6 @@ int main(int argc, char *argv[]) {
 
   MatrixXd y_2_0 = MatrixXd::Zero(N, N);
   GCoord diff(0, 0, 0);
-  double length;
   // Now iterate over all frames in the skipped & strided trajectory
   for (auto f : mtopts->frameList()) {
 
@@ -166,43 +165,44 @@ int main(int argc, char *argv[]) {
     traj->updateGroupCoords(nuclei);
     // Get coords into a tensor (presuming unrolling below)
     for (auto i = 0; i < N; i++) {
-      for (auto j = i + 1; j < N; j++) {
+      for (auto j = 0; j < i; j++) {
         y_2_0(i, j) = Y_2_0(nuclei[i]->coords(), nuclei[j]->coords());
       }
     }
+    // cout << "this is frame: " << f << "\n"
+        //  << y_2_0 << "\n";
     // cout << cos_r3 << "\n\n";
     // first update the y2s for the two frequencies
     // since k-value is zero for zero freq, this is just accumulating cosine
-    // term. Since sigma will be antisymmetric, use upper and lower to record.
-    y2zero.triangularView<Upper>() += y_2_0;
+    // term. 
+    y2zero.triangularView<Lower>() += y_2_0;
     // these two use k and k2 defined above
-    y2omega.triangularView<Upper>() += y_2_0 - k * y1omega;
+    y2omega.triangularView<Lower>() += y_2_0 - k * y1omega;
 
-    y2omega2.triangularView<Upper>() += y_2_0 - k * y1omega2;
+    y2omega2.triangularView<Lower>() += y_2_0 - k2 * y1omega2;
     // now compute the y1 from these y2, noting that y1zero will be zero
-    y1omega = k * y2omega;
-    y1omega2 = k2 * y2omega2;
+    y1omega.triangularView<Lower>() += k * y2omega;
+    y1omega2.triangularView<Lower>() += k2 * y2omega2;
   }
   // compute the spectral densities at each of the three needed freqs
   // following formula E = y1**2 +y2**2 - k*y1*y2
+  // Note that here all calculations should be array calx, not matrix calx.
   MatrixXd Jzero = y2zero.cwiseAbs2();
-  MatrixXd Jomega = y1omega.cwiseAbs2() + y2omega.cwiseAbs2() -
-                    k * y1omega.cwiseProduct(y2omega);
-  MatrixXd Jomega2 = y1omega2.cwiseAbs2() + y2omega2.cwiseAbs2() -
-                     k * y1omega2.cwiseProduct(y2omega2);
+  cout << "This is Jzero:\n" << Jzero << "\n";
+  MatrixXd Jomega = y1omega.cwiseAbs2() + y2omega.cwiseAbs2() 
+                    - k * y1omega.cwiseProduct(y2omega);
 
+  cout << "This is Jomega:\n" << Jomega << "\n";
+
+  MatrixXd Jomega2 = y1omega2.cwiseAbs2() + y2omega2.cwiseAbs2()
+                    - k2 * y1omega2.cwiseProduct(y2omega2);
+  cout << "This is Jomega2:\n" << Jomega2 << "\n";
   // Comput sigma_{ij} and rho_i following Chalmers et al.
   // Sigma is the cross-relaxation rate, and is
   // the sum over the full power and omega spectral densities.
-  MatrixXd sigma = 6 * Jomega2 - Jzero;
-  MatrixXd rho((Jzero + (3 * Jomega) + (6 * Jomega2)).selfadjointView<Upper>());
-  // cout << "this is rho:\n";
-  // cout << rho << endl;
-  // cout << "this is ro_i:\n";
-  // cout << rho.colwise().sum() << endl;
-  MatrixXd R(sigma.selfadjointView<Upper>());
-  // cout << "this is just sigma in R:\n";
-  // cout << R << endl;
+  // MatrixXd sigma = 6 * Jomega2 - Jzero;
+  MatrixXd rho((Jzero + (3 * Jomega) + (6 * Jomega2)).selfadjointView<Lower>());
+  MatrixXd R(6 * Jomega2 - Jzero);
   R.diagonal(0) = rho.colwise().sum();
   cout << "this is R with sigma added, but not in correct units:\n";
   cout << R << endl;
@@ -211,6 +211,9 @@ int main(int argc, char *argv[]) {
   cout << R << endl;
   SelfAdjointEigenSolver<MatrixXd> es(R);
   cout << es.eigenvalues() << endl;
+
+  cout << "report on whether eigendecomposition was successful:\n"
+       << es.info() << endl;
   MatrixXd evolved_vals = (es.eigenvalues() * (-topts->m * ms2s))
                               .array()
                               .exp()
