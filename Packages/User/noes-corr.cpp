@@ -58,6 +58,8 @@ public:
        "time-spacing of samples from trajectory, in GHz (frames/ns). A frequency of zero is an error.")
       ("mix,m", po::value<double>(&m)->default_value(0),
       "NOE mixing time, in milliseconds.")
+      ("buildup-curve-range", po::value<std::string>(&buildup-range), 
+       "Which mixing times to write out for plotting (matlab style range, overrides -m).");
       ("initial-magnetization,M", po::value<double>(&M)->default_value(1),
        "Initial magnetization (M_0) at t=0. If 1 is used, All NOEs relative.")
       ;
@@ -67,11 +69,12 @@ public:
   // options are set to (for logging purposes)
   string print() const {
     ostringstream oss;
-    oss << boost::format("ts=%s,w=%d,B=%d,f=%d,t=%d,m=%d,M=%d") % ts % gamma %
-               B % f % t % m % M;
+    oss << boost::format("ts=%s,w=%d,B=%d,f=%d,t=%d,m=%d,M=%d,buildup-range=%s") % ts % gamma %
+               B % f % t % m % M % buildup-range;
     return (oss.str());
   }
   string ts;
+  string buildup-range;
   double gamma, B, f, m, M;
   int t;
 };
@@ -211,9 +214,6 @@ int main(int argc, char *argv[]) {
   cout << R << endl;
   SelfAdjointEigenSolver<MatrixXd> es(R);
   cout << es.eigenvalues() << endl;
-
-  cout << "report on whether eigendecomposition was successful:\n"
-       << es.info() << endl;
   MatrixXd evolved_vals = (es.eigenvalues() * (-topts->m * ms2s))
                               .array()
                               .exp()
@@ -243,5 +243,14 @@ int main(int argc, char *argv[]) {
               ) * refdist;
     }
   }
-  cout << endl;
+
+  ComputationInfo es_info = es.info();
+  if (es_info == Success)
+    cout << "\nEigendecomposition successful.\n";
+  if (es_info == NumericalIssue)
+    cout << "\nEigendecomposition ran into a numerical issue.\n";
+  if (es_info == NoConvergence)
+    cout << "\nEigendecomposition did not converge.\n";
+  if (es_info == InvalidInput)
+    cout << "\nEigendecomposition was given invalid input.\n";
 }
