@@ -58,7 +58,7 @@ public:
        "time-spacing of samples from trajectory, in GHz (frames/ns). A frequency of zero is an error.")
       ("mix,m", po::value<double>(&m)->default_value(0),
       "NOE mixing time, in milliseconds.")
-      ("buildup-curve-range", po::value<std::string>(&buildup-range), 
+      ("buildup-curve-range", po::value<std::string>(&buildup_range), 
        "Which mixing times to write out for plotting (matlab style range, overrides -m).");
       ("initial-magnetization,M", po::value<double>(&M)->default_value(1),
        "Initial magnetization (M_0) at t=0. If 1 is used, All NOEs relative.")
@@ -70,11 +70,11 @@ public:
   string print() const {
     ostringstream oss;
     oss << boost::format("ts=%s,w=%d,B=%d,f=%d,t=%d,m=%d,M=%d,buildup-range=%s") % ts % gamma %
-               B % f % t % m % M % buildup-range;
+               B % f % t % m % M % buildup_range;
     return (oss.str());
   }
   string ts;
-  string buildup-range;
+  string buildup_range;
   double gamma, B, f, m, M;
   int t;
 };
