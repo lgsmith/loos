@@ -43,6 +43,7 @@ const string fullHelpMsg = "XXX";
 // @cond TOOLS_INTERNAL
 class ToolOptions : public opts::OptionsPackage {
 public:
+  string approxes = "types:\nISA\nSD\n";  
   // clang-format off
   void addGeneric(po::options_description& o) {
     o.add_options()
@@ -59,10 +60,12 @@ public:
       ("mix,m", po::value<double>(&m)->default_value(0),
       "NOE mixing time, in milliseconds.")
       ("buildup-curve-range", po::value<std::string>(&buildup_range), 
-       "Which mixing times to write out for plotting (matlab style range, overrides -m).");
+       "Which mixing times to write out for plotting (matlab style range, overrides -m).")
+      ("isa,I", po::bool_switch(&isa),
+       "If thrown, report relative NOEs without any spin-relaxation.")
       ("initial-magnetization,M", po::value<double>(&M)->default_value(1),
-       "Initial magnetization (M_0) at t=0. If 1 is used, All NOEs relative.")
-      ;
+       "Initial magnetization (M_0) at t=0. If 1 is used, All NOEs relative.");
+      
   }
   // clang-format on
   // The print() function returns a string that describes what all the
@@ -73,6 +76,7 @@ public:
                B % f % t % m % M % buildup_range;
     return (oss.str());
   }
+  bool isa;
   string ts;
   string buildup_range;
   double gamma, B, f, m, M;
@@ -90,7 +94,7 @@ inline const double Y_2_0(GCoord a, GCoord b){
   const GCoord diff = a - b;
   const double length = diff.length();
   const double r3 = length * length * length;
-  return 1.5 * diff[2] * diff[2] / (r3 * length * length) - 0.5 / r3;
+  return 1.5 * diff[2] * diff[2] / (r3 * length * length) - (0.5 / r3);
 }
 
 int main(int argc, char *argv[]) {
@@ -212,45 +216,51 @@ int main(int argc, char *argv[]) {
   R *= dd2;
   cout << "this is R:\n";
   cout << R << endl;
-  SelfAdjointEigenSolver<MatrixXd> es(R);
-  cout << es.eigenvalues() << endl;
-  MatrixXd evolved_vals = (es.eigenvalues() * (-topts->m * ms2s))
-                              .array()
-                              .exp()
-                              .matrix()
-                              .asDiagonal();
-  cout << "this is evolved_vals:\n" << evolved_vals << endl;
-  MatrixXd intensities = es.eigenvectors() * evolved_vals *
-                         es.eigenvectors().inverse() *
-                         (topts->M * MatrixXd::Identity(N, N));
-  cout << intensities << endl;
-  // create tab delimited intensity report, below
-  cout << "reference intensity and distance:\n"
-       << intensities(refindex[0][0], refindex[0][1]) << " " << refdist << "\n";
-  cout << "# resname\tresid\tname\tindex\tresname\tresid\tname\tindex\tvol\tme"
-          "an_r";
-  for (auto i = 0; i < N; i++) {
-    pAtom ith = nuclei[i];
-    for (auto j = i + 1; j < N; j++) {
-      pAtom jth = nuclei[j];
-      cout << "\n"
-           << ith->resname() << "\t" << ith->resid() << "\t" << ith->name()
-           << "\t" << ith->index() << "\t" << jth->resname() << "\t"
-           << jth->resid() << "\t" << jth->name() << "\t" << jth->index()
-           << "\t" << intensities(i, j) << "\t"
-           << pow(
-                intensities(i, j) / intensities(refindex[0][0], refindex[0][1]), -1.0 / 6
-              ) * refdist;
+  if (topts->isa){
+    // do report based on ISA
+  } else {
+    SelfAdjointEigenSolver<MatrixXd> es(R);
+    cout << es.eigenvalues() << endl;
+    MatrixXd evolved_vals = (es.eigenvalues() * (-topts->m * ms2s))
+                                .array()
+                                .exp()
+                                .matrix()
+                                .asDiagonal();
+    cout << "this is evolved_vals:\n" << evolved_vals << endl;
+    MatrixXd intensities = es.eigenvectors() * evolved_vals *
+                           es.eigenvectors().inverse() *
+                           (topts->M * MatrixXd::Identity(N, N));
+    cout << intensities << endl;
+    // create tab delimited intensity report, below
+    cout << "reference intensity and distance:\n"
+         << intensities(refindex[0][0], refindex[0][1]) << " " << refdist << "\n";
+    cout << "# resname\tresid\tname\tindex\tresname\tresid\tname\tindex\tvol\tme"
+            "an_r";
+    for (auto i = 0; i < N; i++) {
+      pAtom ith = nuclei[i];
+      for (auto j = i + 1; j < N; j++) {
+        pAtom jth = nuclei[j];
+        cout << "\n"
+             << ith->resname() << "\t" << ith->resid() << "\t" << ith->name()
+             << "\t" << ith->index() << "\t" << jth->resname() << "\t"
+             << jth->resid() << "\t" << jth->name() << "\t" << jth->index()
+             << "\t" << intensities(i, j) << "\t"
+             << pow(
+                  intensities(i, j) / intensities(refindex[0][0], refindex[0][1]), -1.0 / 6
+                ) * refdist;
+      }
     }
-  }
 
-  ComputationInfo es_info = es.info();
-  if (es_info == Success)
-    cout << "\nEigendecomposition successful.\n";
-  if (es_info == NumericalIssue)
-    cout << "\nEigendecomposition ran into a numerical issue.\n";
-  if (es_info == NoConvergence)
-    cout << "\nEigendecomposition did not converge.\n";
-  if (es_info == InvalidInput)
-    cout << "\nEigendecomposition was given invalid input.\n";
-}
+    ComputationInfo es_info = es.info();
+    if (es_info == Success)
+      cout << "\nEigendecomposition successful.\n";
+    if (es_info == NumericalIssue)
+      cout << "\nEigendecomposition ran into a numerical issue.\n";
+    if (es_info == NoConvergence)
+      cout << "\nEigendecomposition did not converge.\n";
+    if (es_info == InvalidInput)
+      cout << "\nEigendecomposition was given invalid input.\n";
+
+  }
+  
+  }
