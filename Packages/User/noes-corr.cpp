@@ -84,6 +84,28 @@ public:
 };
 // @endcond
 
+// Class for 'magic circle oscillator' (a-la Clay Turner) selective DFTs
+template <typename Derived>
+class MagicCircle
+{
+private:
+  std::vector<Eigen::MatrixBase<Derived>> y1;
+  std::vector<Eigen::MatrixBase<Derived>> y2;
+public:
+  // needs frequencies in radians per sample.
+  MagicCircle(Eigen::MatrixBase<Derived>& empty_sample, Eigen::PlainObjectBase<Derived>& frqs){};
+  ~MagicCircle();
+};
+
+MagicCircle::MagicCircle(/* args */)
+{
+}
+
+MagicCircle::~MagicCircle()
+{
+}
+
+
 // time conversions
 const double ghz2Hz = 1e9;
 const double mhz2Hz = 1e6;
@@ -218,6 +240,7 @@ int main(int argc, char *argv[]) {
   cout << R << endl;
   if (topts->isa){
     // do report based on ISA
+
   } else {
     SelfAdjointEigenSolver<MatrixXd> es(R);
     cout << es.eigenvalues() << endl;
@@ -231,6 +254,7 @@ int main(int argc, char *argv[]) {
                            es.eigenvectors().inverse() *
                            (topts->M * MatrixXd::Identity(N, N));
     cout << intensities << endl;
+  }
     // create tab delimited intensity report, below
     cout << "reference intensity and distance:\n"
          << intensities(refindex[0][0], refindex[0][1]) << " " << refdist << "\n";
