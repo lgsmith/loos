@@ -98,47 +98,50 @@ public:
   DFTMagicCircle(Eigen::MatrixBase<SampleType> &empty_sample,
                  std::vector<FrqType> &frqs, double sampling_frq,
                  double n_samples);
-  void operator()(Eigen::MatrixBase<SampleType> &sample);
-  Eigen::MatrixBase<SampleType>spectral_density(void);
+  void operator()(const Eigen::MatrixBase<SampleType> &sample);
+  std::vector<Eigen::MatrixBase<SampleType>> spectral_density(void);
   ~DFTMagicCircle();
 };
 
 template <typename SampleType, typename FrqType>
-DFTMagicCircle::DFTMagicCircle(Eigen::MatrixBase<SampleType> &empty_sample,
-                               std::vector<FrqType> &frqs, double sampling_frq,
-                               double n_samples) {
+DFTMagicCircle<SampleType, FrqType>::DFTMagicCircle(
+    Eigen::MatrixBase<SampleType> &empty_sample, std::vector<FrqType> &frqs,
+    double sampling_frq, double n_samples) {
   // buildup k vector with sinusoids corresponding to tracked frqs.
   for (const auto f : frqs) {
     // convert to radians per sample over two, take sin, then multiply by 2
     K.push_back(2 * std::sin((PI / n_samples) * std::floor(f / sampling_frq)));
     // for each frq, set up both recursion half-step states to zero.
-    y1.push_back(
-        Eigen::Zero<SampleType>(empty_sample.rows(), empty_sample.cols()));
-    y2.push_back(
-        Eigen::Zero<SampleType>(empty_sample.rows(), empty_sample.cols()));
+    y1.push_back(Eigen::MatrixBase<SampleType>::Zero(empty_sample.rows(),
+                                                     empty_sample.cols()));
+    y2.push_back(Eigen::MatrixBase<SampleType>::Zero(empty_sample.rows(),
+                                                     empty_sample.cols()));
   }
 }
 
 template <typename SampleType, typename FrqType>
-inline void DFTMagicCircle::operator()(Eigen::MatrixBase<SampleType> &sample) {
+inline void DFTMagicCircle<SampleType, FrqType>::
+operator()(const Eigen::MatrixBase<SampleType> &sample) {
   for (auto i = 0; i < K.size(); i++) {
     // do both DFT sinusoid half steps now
-    y2[i].triangularView<Lower>() += sample - K[i] * y1[i];
-    y1[i].triangularView<Lower>() += K[i] * y2[i];
+    y2[i].template triangularView<Eigen::Lower>() += sample - K[i] * y1[i];
+    y1[i].template triangularView<Eigen::Lower>() += K[i] * y2[i];
   }
 }
 
 template <typename SampleType, typename FrqType>
-inline std::vector<Eigen::MatrixBase<SampleType>> DFTMagicCircle::spectral_density(){
-  for (auto i = 0; i < K.size(); i++){
+inline std::vector<Eigen::MatrixBase<SampleType>>
+DFTMagicCircle<SampleType, FrqType>::spectral_density() {
+  for (auto i = 0; i < K.size(); i++) {
     J.push_back(
-      y1[i].cwiseAbs2() + y2[i].cwiseAbs2() - (K[i] * y1[i].cwiseProduct(y2[i])
+      y1[i].cwiseAbs2() + y2[i].cwiseAbs2() - (K[i] * y1[i].cwiseProduct(y2[i]))
     );
   }
   return J;
-} 
+}
 
-DFTMagicCircle::~DFTMagicCircle() {}
+template <typename SampleType, typename FrqType>
+DFTMagicCircle<SampleType, FrqType>::~DFTMagicCircle() {}
 
 // time conversions
 const double ghz2Hz = 1e9;
@@ -273,23 +276,23 @@ int main(int argc, char *argv[]) {
   R *= dd2;
   cout << "this is R:\n";
   cout << R << endl;
-  if (topts->isa) {
-    // do report based on ISA
+  // if (topts->isa) {
+  // do report based on ISA
 
-  } else {
-    SelfAdjointEigenSolver<MatrixXd> es(R);
-    cout << es.eigenvalues() << endl;
-    MatrixXd evolved_vals = (es.eigenvalues() * (-topts->m * ms2s))
-                                .array()
-                                .exp()
-                                .matrix()
-                                .asDiagonal();
-    cout << "this is evolved_vals:\n" << evolved_vals << endl;
-    MatrixXd intensities = es.eigenvectors() * evolved_vals *
-                           es.eigenvectors().inverse() *
-                           (topts->M * MatrixXd::Identity(N, N));
-    cout << intensities << endl;
-  }
+  // } else {
+  SelfAdjointEigenSolver<MatrixXd> es(R);
+  cout << es.eigenvalues() << endl;
+  MatrixXd evolved_vals = (es.eigenvalues() * (-topts->m * ms2s))
+                              .array()
+                              .exp()
+                              .matrix()
+                              .asDiagonal();
+  cout << "this is evolved_vals:\n" << evolved_vals << endl;
+  MatrixXd intensities = es.eigenvectors() * evolved_vals *
+                         es.eigenvectors().inverse() *
+                         (topts->M * MatrixXd::Identity(N, N));
+  cout << intensities << endl;
+  // }
   // create tab delimited intensity report, below
   cout << "reference intensity and distance:\n"
        << intensities(refindex[0][0], refindex[0][1]) << " " << refdist << "\n";
@@ -320,5 +323,4 @@ int main(int argc, char *argv[]) {
     cout << "\nEigendecomposition did not converge.\n";
   if (es_info == InvalidInput)
     cout << "\nEigendecomposition was given invalid input.\n";
-}
 }
