@@ -43,7 +43,7 @@ const string fullHelpMsg = "XXX";
 // @cond TOOLS_INTERNAL
 class ToolOptions : public opts::OptionsPackage {
 public:
-  string approxes = "types:\nISA\nSD\n";  
+  string approxes = "types:\nISA\nSD\n";
   // clang-format off
   void addGeneric(po::options_description& o) {
     o.add_options()
@@ -72,8 +72,9 @@ public:
   // options are set to (for logging purposes)
   string print() const {
     ostringstream oss;
-    oss << boost::format("ts=%s,w=%d,B=%d,f=%d,t=%d,m=%d,M=%d,buildup-range=%s") % ts % gamma %
-               B % f % t % m % M % buildup_range;
+    oss << boost::format(
+               "ts=%s,w=%d,B=%d,f=%d,t=%d,m=%d,M=%d,buildup-range=%s") %
+               ts % gamma % B % f % t % m % M % buildup_range;
     return (oss.str());
   }
   bool isa;
@@ -85,26 +86,59 @@ public:
 // @endcond
 
 // Class for 'magic circle oscillator' (a-la Clay Turner) selective DFTs
-template <typename Derived>
-class MagicCircle
-{
+template <typename SampleType, typename FrqType> class DFTMagicCircle {
 private:
-  std::vector<Eigen::MatrixBase<Derived>> y1;
-  std::vector<Eigen::MatrixBase<Derived>> y2;
+  std::vector<Eigen::MatrixBase<SampleType>> y1;
+  std::vector<Eigen::MatrixBase<SampleType>> y2;
+  std::vector<FrqType> K;
+  std::vector<Eigen::MatrixBase<SampleType>> J;
+
 public:
-  // needs frequencies in radians per sample.
-  MagicCircle(Eigen::MatrixBase<Derived>& empty_sample, Eigen::PlainObjectBase<Derived>& frqs){};
-  ~MagicCircle();
+  // needs frequencies in Hertz
+  DFTMagicCircle(Eigen::MatrixBase<SampleType> &empty_sample,
+                 std::vector<FrqType> &frqs, double sampling_frq,
+                 double n_samples);
+  void operator()(Eigen::MatrixBase<SampleType> &sample);
+  Eigen::MatrixBase<SampleType>spectral_density(void);
+  ~DFTMagicCircle();
 };
 
-MagicCircle::MagicCircle(/* args */)
-{
+template <typename SampleType, typename FrqType>
+DFTMagicCircle::DFTMagicCircle(Eigen::MatrixBase<SampleType> &empty_sample,
+                               std::vector<FrqType> &frqs, double sampling_frq,
+                               double n_samples) {
+  // buildup k vector with sinusoids corresponding to tracked frqs.
+  for (const auto f : frqs) {
+    // convert to radians per sample over two, take sin, then multiply by 2
+    K.push_back(2 * std::sin((PI / n_samples) * std::floor(f / sampling_frq)));
+    // for each frq, set up both recursion half-step states to zero.
+    y1.push_back(
+        Eigen::Zero<SampleType>(empty_sample.rows(), empty_sample.cols()));
+    y2.push_back(
+        Eigen::Zero<SampleType>(empty_sample.rows(), empty_sample.cols()));
+  }
 }
 
-MagicCircle::~MagicCircle()
-{
+template <typename SampleType, typename FrqType>
+inline void DFTMagicCircle::operator()(Eigen::MatrixBase<SampleType> &sample) {
+  for (auto i = 0; i < K.size(); i++) {
+    // do both DFT sinusoid half steps now
+    y2[i].triangularView<Lower>() += sample - K[i] * y1[i];
+    y1[i].triangularView<Lower>() += K[i] * y2[i];
+  }
 }
 
+template <typename SampleType, typename FrqType>
+inline std::vector<Eigen::MatrixBase<SampleType>> DFTMagicCircle::spectral_density(){
+  for (auto i = 0; i < K.size(); i++){
+    J.push_back(
+      y1[i].cwiseAbs2() + y2[i].cwiseAbs2() - (K[i] * y1[i].cwiseProduct(y2[i])
+    );
+  }
+  return J;
+} 
+
+DFTMagicCircle::~DFTMagicCircle() {}
 
 // time conversions
 const double ghz2Hz = 1e9;
@@ -112,7 +146,7 @@ const double mhz2Hz = 1e6;
 const double ms2s = 1e-3;
 
 // second order spherical harmonic, with multiples factored out.
-inline const double Y_2_0(GCoord a, GCoord b){
+inline const double Y_2_0(GCoord a, GCoord b) {
   const GCoord diff = a - b;
   const double length = diff.length();
   const double r3 = length * length * length;
@@ -157,7 +191,8 @@ int main(int argc, char *argv[]) {
   // NMR precalculations
   const double mu0 =
       1.25663706212e4; // wikipedia, H/Angstrom (10^10 * value in H/m)
-  const double gamma = topts->gamma * 2 * PI * mhz2Hz; // convert Gamma from mHz/T to Rad/s*T
+  const double gamma =
+      topts->gamma * 2 * PI * mhz2Hz;  // convert Gamma from mHz/T to Rad/s*T
   const double hbar = 1.054571817e-34; // wikipedia, J*s
   const double N_A = 6.02214076e24;    // Wikipedia, Avogadro's Constant
   // dipolar interaction constant, unit distance per Mole
@@ -199,11 +234,11 @@ int main(int argc, char *argv[]) {
       }
     }
     // cout << "this is frame: " << f << "\n"
-        //  << y_2_0 << "\n";
+    //  << y_2_0 << "\n";
     // cout << cos_r3 << "\n\n";
     // first update the y2s for the two frequencies
     // since k-value is zero for zero freq, this is just accumulating cosine
-    // term. 
+    // term.
     y2zero.triangularView<Lower>() += y_2_0;
     // these two use k and k2 defined above
     y2omega.triangularView<Lower>() += y_2_0 - k * y1omega;
@@ -218,13 +253,13 @@ int main(int argc, char *argv[]) {
   // Note that here all calculations should be array calx, not matrix calx.
   MatrixXd Jzero = y2zero.cwiseAbs2();
   cout << "This is Jzero:\n" << Jzero << "\n";
-  MatrixXd Jomega = y1omega.cwiseAbs2() + y2omega.cwiseAbs2() 
-                    - k * y1omega.cwiseProduct(y2omega);
+  MatrixXd Jomega = y1omega.cwiseAbs2() + y2omega.cwiseAbs2() -
+                    k * y1omega.cwiseProduct(y2omega);
 
   cout << "This is Jomega:\n" << Jomega << "\n";
 
-  MatrixXd Jomega2 = y1omega2.cwiseAbs2() + y2omega2.cwiseAbs2()
-                    - k2 * y1omega2.cwiseProduct(y2omega2);
+  MatrixXd Jomega2 = y1omega2.cwiseAbs2() + y2omega2.cwiseAbs2() -
+                     k2 * y1omega2.cwiseProduct(y2omega2);
   cout << "This is Jomega2:\n" << Jomega2 << "\n";
   // Comput sigma_{ij} and rho_i following Chalmers et al.
   // Sigma is the cross-relaxation rate, and is
@@ -238,7 +273,7 @@ int main(int argc, char *argv[]) {
   R *= dd2;
   cout << "this is R:\n";
   cout << R << endl;
-  if (topts->isa){
+  if (topts->isa) {
     // do report based on ISA
 
   } else {
@@ -255,36 +290,35 @@ int main(int argc, char *argv[]) {
                            (topts->M * MatrixXd::Identity(N, N));
     cout << intensities << endl;
   }
-    // create tab delimited intensity report, below
-    cout << "reference intensity and distance:\n"
-         << intensities(refindex[0][0], refindex[0][1]) << " " << refdist << "\n";
-    cout << "# resname\tresid\tname\tindex\tresname\tresid\tname\tindex\tvol\tme"
-            "an_r";
-    for (auto i = 0; i < N; i++) {
-      pAtom ith = nuclei[i];
-      for (auto j = i + 1; j < N; j++) {
-        pAtom jth = nuclei[j];
-        cout << "\n"
-             << ith->resname() << "\t" << ith->resid() << "\t" << ith->name()
-             << "\t" << ith->index() << "\t" << jth->resname() << "\t"
-             << jth->resid() << "\t" << jth->name() << "\t" << jth->index()
-             << "\t" << intensities(i, j) << "\t"
-             << pow(
-                  intensities(i, j) / intensities(refindex[0][0], refindex[0][1]), -1.0 / 6
-                ) * refdist;
-      }
+  // create tab delimited intensity report, below
+  cout << "reference intensity and distance:\n"
+       << intensities(refindex[0][0], refindex[0][1]) << " " << refdist << "\n";
+  cout << "# resname\tresid\tname\tindex\tresname\tresid\tname\tindex\tvol\tme"
+          "an_r";
+  for (auto i = 0; i < N; i++) {
+    pAtom ith = nuclei[i];
+    for (auto j = i + 1; j < N; j++) {
+      pAtom jth = nuclei[j];
+      cout << "\n"
+           << ith->resname() << "\t" << ith->resid() << "\t" << ith->name()
+           << "\t" << ith->index() << "\t" << jth->resname() << "\t"
+           << jth->resid() << "\t" << jth->name() << "\t" << jth->index()
+           << "\t" << intensities(i, j) << "\t"
+           << pow(intensities(i, j) /
+                      intensities(refindex[0][0], refindex[0][1]),
+                  -1.0 / 6) *
+                  refdist;
     }
-
-    ComputationInfo es_info = es.info();
-    if (es_info == Success)
-      cout << "\nEigendecomposition successful.\n";
-    if (es_info == NumericalIssue)
-      cout << "\nEigendecomposition ran into a numerical issue.\n";
-    if (es_info == NoConvergence)
-      cout << "\nEigendecomposition did not converge.\n";
-    if (es_info == InvalidInput)
-      cout << "\nEigendecomposition was given invalid input.\n";
-
   }
-  
-  }
+
+  ComputationInfo es_info = es.info();
+  if (es_info == Success)
+    cout << "\nEigendecomposition successful.\n";
+  if (es_info == NumericalIssue)
+    cout << "\nEigendecomposition ran into a numerical issue.\n";
+  if (es_info == NoConvergence)
+    cout << "\nEigendecomposition did not converge.\n";
+  if (es_info == InvalidInput)
+    cout << "\nEigendecomposition was given invalid input.\n";
+}
+}
