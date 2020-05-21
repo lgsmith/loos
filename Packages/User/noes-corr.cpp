@@ -88,33 +88,33 @@ public:
 // Class for 'magic circle oscillator' (a-la Clay Turner) selective DFTs
 template <typename SampleType, typename FrqType> class DFTMagicCircle {
 private:
-  std::vector<Eigen::MatrixBase<SampleType>> y1;
-  std::vector<Eigen::MatrixBase<SampleType>> y2;
-  std::vector<FrqType> K;
-  std::vector<Eigen::MatrixBase<SampleType>> J;
+  typename std::vector<Eigen::MatrixBase<SampleType>> y1;
+  typename std::vector<Eigen::MatrixBase<SampleType>> y2;
+  typename std::vector<FrqType> K;
+  typename std::vector<Eigen::MatrixBase<SampleType>> J;
 
 public:
   // needs frequencies in Hertz
   DFTMagicCircle(Eigen::MatrixBase<SampleType> &empty_sample,
-                 std::vector<FrqType> &frqs, double sampling_frq,
-                 double n_samples);
+                 std::vector<FrqType> &frqs, double sampling_rate,
+                 long unsigned int n_samples);
   void operator()(const Eigen::MatrixBase<SampleType> &sample);
-  std::vector<Eigen::MatrixBase<SampleType>> spectral_density(void);
+  typename std::vector<Eigen::MatrixBase<SampleType>> spectral_density(void);
   ~DFTMagicCircle();
 };
 
 template <typename SampleType, typename FrqType>
 DFTMagicCircle<SampleType, FrqType>::DFTMagicCircle(
     Eigen::MatrixBase<SampleType> &empty_sample, std::vector<FrqType> &frqs,
-    double sampling_frq, double n_samples) {
+    double sampling_rate, long unsigned int n_samples) {
   // buildup k vector with sinusoids corresponding to tracked frqs.
   for (const auto f : frqs) {
     // convert to radians per sample over two, take sin, then multiply by 2
-    K.push_back(2 * std::sin((PI / n_samples) * std::floor(f / sampling_frq)));
+    K.push_back(2 * std::sin((PI / n_samples) * std::floor(f / sampling_rate)));
     // for each frq, set up both recursion half-step states to zero.
-    y1.push_back(Eigen::MatrixBase<SampleType>::Zero(empty_sample.rows(),
+    y1.push_back(typename Eigen::MatrixBase<SampleType>::Zero(empty_sample.rows(),
                                                      empty_sample.cols()));
-    y2.push_back(Eigen::MatrixBase<SampleType>::Zero(empty_sample.rows(),
+    y2.push_back(typename Eigen::MatrixBase<SampleType>::Zero(empty_sample.rows(),
                                                      empty_sample.cols()));
   }
 }
@@ -130,12 +130,11 @@ operator()(const Eigen::MatrixBase<SampleType> &sample) {
 }
 
 template <typename SampleType, typename FrqType>
-inline std::vector<Eigen::MatrixBase<SampleType>>
+inline typename std::vector<Eigen::MatrixBase<SampleType>>
 DFTMagicCircle<SampleType, FrqType>::spectral_density() {
   for (auto i = 0; i < K.size(); i++) {
-    J.push_back(
-      y1[i].cwiseAbs2() + y2[i].cwiseAbs2() - (K[i] * y1[i].cwiseProduct(y2[i]))
-    );
+    J.push_back(y1[i].cwiseAbs2() + y2[i].cwiseAbs2() -
+                (K[i] * y1[i].cwiseProduct(y2[i])));
   }
   return J;
 }
@@ -149,7 +148,7 @@ const double mhz2Hz = 1e6;
 const double ms2s = 1e-3;
 
 // second order spherical harmonic, with multiples factored out.
-inline const double Y_2_0(GCoord a, GCoord b) {
+inline const double Y_2_0(const GCoord a, const GCoord b) {
   const GCoord diff = a - b;
   const double length = diff.length();
   const double r3 = length * length * length;
@@ -201,29 +200,15 @@ int main(int argc, char *argv[]) {
   // dipolar interaction constant, unit distance per Mole
   const double dd = gamma * gamma * mu0 * hbar / (4 * PI);
   const double dd2 = dd * dd * N_A * 5.0 / (PI * 16);
-
   // Magic circle oscillator precomputation:
   // Larmor frequency, in Hz
   const double omega = gamma * topts->B * mhz2Hz;
-  // convert to bin number omega
-  const double omega_bin = floor(omega / (topts->f * ghz2Hz));
-  // for magic circle, the customary 2 Pi bin_num/nSamples is divided by 2 to
-  // produce two 90 degree half-step updates per sample from the time-series.
-  const double omega_rad_sample = omega_bin * PI / mtopts->frameList().size();
-  // DFT bin corresponding to the above omega
-  // we need three frequencies; 0, omega, and two times omega
-  const double k = 2 * std::sin(omega_rad_sample);
-  const double k2 = 2 * std::sin(2 * omega_rad_sample);
-  // matricies to hold the intermediate values we need for the three frequencies
-  // MatrixXd y1zero = MatrixXd::Zero(N, N); // unneeded, always zero for k = 0.
-  MatrixXd y2zero = MatrixXd::Zero(N, N);
-  MatrixXd y1omega = MatrixXd::Zero(N, N);
-  MatrixXd y2omega = MatrixXd::Zero(N, N);
-  MatrixXd y1omega2 = MatrixXd::Zero(N, N);
-  MatrixXd y2omega2 = MatrixXd::Zero(N, N);
-
+  vector<double> frqs{0.0, omega, omega * 2};
+  // matrix to hold return values of spherical harmonic calculation on forloop
   MatrixXd y_2_0 = MatrixXd::Zero(N, N);
-  GCoord diff(0, 0, 0);
+  // Magic Circle oscillator for trackin samples like the above
+  DFTMagicCircle dft(y_2_0, frqs, topts->f,
+                     mtopts->frameList().size());
   // Now iterate over all frames in the skipped & strided trajectory
   for (auto f : mtopts->frameList()) {
 
@@ -236,42 +221,17 @@ int main(int argc, char *argv[]) {
         y_2_0(i, j) = Y_2_0(nuclei[i]->coords(), nuclei[j]->coords());
       }
     }
-    // cout << "this is frame: " << f << "\n"
-    //  << y_2_0 << "\n";
-    // cout << cos_r3 << "\n\n";
-    // first update the y2s for the two frequencies
-    // since k-value is zero for zero freq, this is just accumulating cosine
-    // term.
-    y2zero.triangularView<Lower>() += y_2_0;
-    // these two use k and k2 defined above
-    y2omega.triangularView<Lower>() += y_2_0 - k * y1omega;
-
-    y2omega2.triangularView<Lower>() += y_2_0 - k2 * y1omega2;
-    // now compute the y1 from these y2, noting that y1zero will be zero
-    y1omega.triangularView<Lower>() += k * y2omega;
-    y1omega2.triangularView<Lower>() += k2 * y2omega2;
+    dft(y_2_0);
   }
   // compute the spectral densities at each of the three needed freqs
   // following formula E = y1**2 +y2**2 - k*y1*y2
-  // Note that here all calculations should be array calx, not matrix calx.
-  MatrixXd Jzero = y2zero.cwiseAbs2();
-  cout << "This is Jzero:\n" << Jzero << "\n";
-  MatrixXd Jomega = y1omega.cwiseAbs2() + y2omega.cwiseAbs2() -
-                    k * y1omega.cwiseProduct(y2omega);
-
-  cout << "This is Jomega:\n" << Jomega << "\n";
-
-  MatrixXd Jomega2 = y1omega2.cwiseAbs2() + y2omega2.cwiseAbs2() -
-                     k2 * y1omega2.cwiseProduct(y2omega2);
-  cout << "This is Jomega2:\n" << Jomega2 << "\n";
-  // Comput sigma_{ij} and rho_i following Chalmers et al.
-  // Sigma is the cross-relaxation rate, and is
-  // the sum over the full power and omega spectral densities.
-  // MatrixXd sigma = 6 * Jomega2 - Jzero;
-  MatrixXd rho((Jzero + (3 * Jomega) + (6 * Jomega2)).selfadjointView<Lower>());
-  MatrixXd R(6 * Jomega2 - Jzero);
+  vector<MatrixXd> J = dft.spectral_density();
+  MatrixXd rho(
+    (J[0] + (3 * J[1]) + (6 * J[2])).selfadjointView<Lower>()
+  );
+  MatrixXd R((6 * J[2]) - J[0]);
   R.diagonal(0) = rho.colwise().sum();
-  cout << "this is R with sigma added, but not in correct units:\n";
+  cout << "this is R, but not in correct units:\n";
   cout << R << endl;
   R *= dd2;
   cout << "this is R:\n";
