@@ -86,42 +86,38 @@ public:
 // @endcond
 
 // Class for 'magic circle oscillator' (a-la Clay Turner) selective DFTs
-template <typename SampleType, typename FrqType> class DFTMagicCircle {
+// Works with matrix valued samples.
+class DFTMagicCircle {
 private:
-  typename std::vector<Eigen::MatrixBase<SampleType>> y1;
-  typename std::vector<Eigen::MatrixBase<SampleType>> y2;
-  typename std::vector<FrqType> K;
-  typename std::vector<Eigen::MatrixBase<SampleType>> J;
+  std::vector<Eigen::MatrixXd> y1;
+  std::vector<Eigen::MatrixXd> y2;
+  std::vector<double> K;
+  std::vector<Eigen::MatrixXd> J;
 
 public:
   // needs frequencies in Hertz
-  DFTMagicCircle(Eigen::MatrixBase<SampleType> &empty_sample,
-                 std::vector<FrqType> &frqs, double sampling_rate,
-                 long unsigned int n_samples);
-  void operator()(const Eigen::MatrixBase<SampleType> &sample);
-  typename std::vector<Eigen::MatrixBase<SampleType>> spectral_density(void);
+  DFTMagicCircle(Eigen::MatrixXd &empty_sample, const std::vector<double> &frqs,
+                 const double sampling_rate, const long unsigned int n_samples);
+  void operator()(const Eigen::MatrixXd &sample);
+  typename std::vector<Eigen::MatrixXd> spectral_density(void);
   ~DFTMagicCircle();
 };
 
-template <typename SampleType, typename FrqType>
-DFTMagicCircle<SampleType, FrqType>::DFTMagicCircle(
-    Eigen::MatrixBase<SampleType> &empty_sample, std::vector<FrqType> &frqs,
-    double sampling_rate, long unsigned int n_samples) {
+DFTMagicCircle::DFTMagicCircle(Eigen::MatrixXd &empty_sample,
+                               const std::vector<double> &frqs,
+                               const double sampling_rate,
+                               const long unsigned int n_samples) {
   // buildup k vector with sinusoids corresponding to tracked frqs.
   for (const auto f : frqs) {
     // convert to radians per sample over two, take sin, then multiply by 2
     K.push_back(2 * std::sin((PI / n_samples) * std::floor(f / sampling_rate)));
     // for each frq, set up both recursion half-step states to zero.
-    y1.push_back(typename Eigen::MatrixBase<SampleType>::Zero(empty_sample.rows(),
-                                                     empty_sample.cols()));
-    y2.push_back(typename Eigen::MatrixBase<SampleType>::Zero(empty_sample.rows(),
-                                                     empty_sample.cols()));
+    y1.push_back(MatrixXd::Zero(empty_sample.rows(), empty_sample.cols()));
+    y2.push_back(MatrixXd::Zero(empty_sample.rows(), empty_sample.cols()));
   }
 }
 
-template <typename SampleType, typename FrqType>
-inline void DFTMagicCircle<SampleType, FrqType>::
-operator()(const Eigen::MatrixBase<SampleType> &sample) {
+inline void DFTMagicCircle::operator()(const Eigen::MatrixXd &sample) {
   for (auto i = 0; i < K.size(); i++) {
     // do both DFT sinusoid half steps now
     y2[i].template triangularView<Eigen::Lower>() += sample - K[i] * y1[i];
@@ -129,9 +125,7 @@ operator()(const Eigen::MatrixBase<SampleType> &sample) {
   }
 }
 
-template <typename SampleType, typename FrqType>
-inline typename std::vector<Eigen::MatrixBase<SampleType>>
-DFTMagicCircle<SampleType, FrqType>::spectral_density() {
+inline std::vector<MatrixXd> DFTMagicCircle::spectral_density() {
   for (auto i = 0; i < K.size(); i++) {
     J.push_back(y1[i].cwiseAbs2() + y2[i].cwiseAbs2() -
                 (K[i] * y1[i].cwiseProduct(y2[i])));
@@ -139,8 +133,7 @@ DFTMagicCircle<SampleType, FrqType>::spectral_density() {
   return J;
 }
 
-template <typename SampleType, typename FrqType>
-DFTMagicCircle<SampleType, FrqType>::~DFTMagicCircle() {}
+DFTMagicCircle::~DFTMagicCircle() {}
 
 // time conversions
 const double ghz2Hz = 1e9;
@@ -207,8 +200,7 @@ int main(int argc, char *argv[]) {
   // matrix to hold return values of spherical harmonic calculation on forloop
   MatrixXd y_2_0 = MatrixXd::Zero(N, N);
   // Magic Circle oscillator for trackin samples like the above
-  DFTMagicCircle dft(y_2_0, frqs, topts->f,
-                     mtopts->frameList().size());
+  DFTMagicCircle dft(y_2_0, frqs, topts->f, mtopts->frameList().size());
   // Now iterate over all frames in the skipped & strided trajectory
   for (auto f : mtopts->frameList()) {
 
@@ -226,9 +218,7 @@ int main(int argc, char *argv[]) {
   // compute the spectral densities at each of the three needed freqs
   // following formula E = y1**2 +y2**2 - k*y1*y2
   vector<MatrixXd> J = dft.spectral_density();
-  MatrixXd rho(
-    (J[0] + (3 * J[1]) + (6 * J[2])).selfadjointView<Lower>()
-  );
+  MatrixXd rho((J[0] + (3 * J[1]) + (6 * J[2])).selfadjointView<Lower>());
   MatrixXd R((6 * J[2]) - J[0]);
   R.diagonal(0) = rho.colwise().sum();
   cout << "this is R, but not in correct units:\n";

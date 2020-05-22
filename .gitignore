@@ -164,6 +164,7 @@ Packages/User/traj_transform
 Packages/User/traj_calc
 Packages/User/noes
 Packages/User/noes-corr
+Packages/User/magic_circle_test
 Packages/DensityTools/blob_stats
 Packages/DensityTools/water-sides
 Packages/DensityTools/water-extract
