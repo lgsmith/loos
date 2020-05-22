@@ -1,8 +1,8 @@
 #include "DFTMagicCircle.hpp"
-#include <iostream>
 #include <Eigen/Dense>
-#include <vector>
 #include <cmath>
+#include <iostream>
+#include <vector>
 
 using namespace std;
 using namespace Eigen;
@@ -29,6 +29,14 @@ int main() {
     sample << f(i / sample_frq, signal_frqs);
     cout << "\nSample after " << i << "\n" << sample << "\n";
     dft(sample);
+    // cout << "y1:\n";
+    // for (const auto i : dft.y1)
+    //   cout << i << " ";
+    // cout "\ny2:\n";
+    // for (const auto i : dft.y2)
+    //   cout << i << " ";
+    // cout << endl;
+
   }
   vector<MatrixXd> J = dft.spectral_density();
   for (auto i = 0; i < frqs.size(); i++)
