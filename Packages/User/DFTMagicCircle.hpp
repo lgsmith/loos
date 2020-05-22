@@ -6,8 +6,7 @@ const double PI = M_PI;
 
 class DFTMagicCircle {
 private:
-  std::vector<Eigen::MatrixXd> y1;
-  std::vector<Eigen::MatrixXd> y2;
+
   std::vector<double> K;
   std::vector<Eigen::MatrixXd> J;
 
@@ -16,7 +15,9 @@ public:
   DFTMagicCircle(Eigen::MatrixXd &empty_sample, const std::vector<double> &frqs,
                  const double sampling_rate, const long unsigned int n_samples);
   void operator()(const Eigen::MatrixXd &sample);
-  typename std::vector<Eigen::MatrixXd> spectral_density(void);
+  std::vector<Eigen::MatrixXd> y2; // needs frequencies in Hertz
+  std::vector<Eigen::MatrixXd> y1; 
+  std::vector<Eigen::MatrixXd> spectral_density(void);
   ~DFTMagicCircle();
 };
 
@@ -37,8 +38,8 @@ DFTMagicCircle::DFTMagicCircle(Eigen::MatrixXd &empty_sample,
 inline void DFTMagicCircle::operator()(const Eigen::MatrixXd &sample) {
   for (auto i = 0; i < K.size(); i++) {
     // do both DFT sinusoid half steps now
-    y2[i].template triangularView<Eigen::Lower>() += sample - K[i] * y1[i];
-    y1[i].template triangularView<Eigen::Lower>() += K[i] * y2[i];
+    y2[i].triangularView<Eigen::Lower>() += sample - K[i] * y1[i];
+    y1[i].triangularView<Eigen::Lower>() += K[i] * y2[i];
   }
 }
 
