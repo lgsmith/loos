@@ -6,10 +6,10 @@
 
 using namespace std;
 using namespace Eigen;
-double f(double t, vector<double> frqs) {
+double f(double t, vector<double> &frqs) {
   double accum = 0;
   for (const auto w : frqs) {
-    accum += cos(w * 2 * PI * t);
+    accum += cos(w * 2 * M_1_PI * t);
   }
   return accum;
 }
@@ -38,9 +38,9 @@ int main() {
     }
   }
   vector<MatrixXd> J = dft.spectral_density();
-  const double gain = N_samples * N_samples / 4;
+  const double gain = N_samples * N_samples / 16;
   for (auto i = 0; i < frqs.size(); i++) {
-    cout << "For frequency:\n"
+    cout << "\nFor frequency:\n"
          << frqs[i] << "  " <<  dft.K[i] << "\ndensity:\n"
          << J[i] / gain << "\n";
   }

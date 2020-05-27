@@ -2,8 +2,6 @@
 #include <cmath>
 #include <vector>
 
-const double PI = M_PI;
-
 class DFTMagicCircle {
 private:
   std::vector<Eigen::MatrixXd> J;
@@ -27,7 +25,7 @@ DFTMagicCircle::DFTMagicCircle(Eigen::MatrixXd &empty_sample,
   // buildup k vector with sinusoids corresponding to tracked frqs.
   for (const auto f : frqs) {
     // convert to radians per sample over two, take sin, then multiply by 2
-    K.push_back(2 * std::sin((PI / n_samples) * std::floor(f / sampling_rate)));
+    K.push_back(2 * std::sin(f * M_1_PI / sampling_rate)); // note pi, not 2*pi
     // for each frq, set up both recursion half-step states to zero.
     y1.push_back(
         Eigen::MatrixXd::Zero(empty_sample.rows(), empty_sample.cols()));
