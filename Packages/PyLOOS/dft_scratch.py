@@ -19,5 +19,5 @@ for bin in range(len(frqs)):
 
     E[bin] = y1**2 + y2**2 - k * y1 * y2
 
-plt.plot(t_fft, p, t_fft, E)
+plt.plot(t_fft, E)
 plt.show()
