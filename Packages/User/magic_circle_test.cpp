@@ -20,10 +20,9 @@ int main() {
   const double sample_frq = 8000;
   const int N_samples = 16000;
   MatrixXd sample(2, 2);
-  sample << 0,0, 0, 0;
+  sample << 0, 0, 0, 0;
   vector<MatrixXd> samples;
   cout << "\nSAMPLE first:\n" << sample;
-
 
   for (int i = 0; i < N_samples; i++) {
     sample(1, 0) = f(i / sample_frq, signal_frqs);
@@ -32,16 +31,18 @@ int main() {
 
   DFTMagicCircle dft(sample, frqs, sample_frq, N_samples);
   for (auto s : samples) {
-    cout << "\n" <<  s << "\n";
+    cout << "\n" << s << "\n";
     dft(s);
-    for (auto i = 0; i < frqs.size(); i++){
-      cout << dft.y1[i] << " "
-           << dft.y2[i] << " ";
+    for (auto i = 0; i < frqs.size(); i++) {
+      cout << dft.y1[i] << " " << dft.y2[i] << " ";
     }
   }
   vector<MatrixXd> J = dft.spectral_density();
   const double gain = N_samples * N_samples / 4;
-  for (auto i = 0; i < frqs.size(); i++)
-    cout << "For frequency: " << frqs[i] << " density: " << J[i] / gain << "\n";
+  for (auto i = 0; i < frqs.size(); i++) {
+    cout << "For frequency:\n"
+         << frqs[i] << "  " <<  dft.K[i] << "\ndensity:\n"
+         << J[i] / gain << "\n";
+  }
   return 0;
 }

@@ -1,13 +1,11 @@
 #include <Eigen/Dense>
-#include <vector>
 #include <cmath>
+#include <vector>
 
 const double PI = M_PI;
 
 class DFTMagicCircle {
 private:
-
-  std::vector<double> K;
   std::vector<Eigen::MatrixXd> J;
 
 public:
@@ -16,7 +14,8 @@ public:
                  const double sampling_rate, const long unsigned int n_samples);
   void operator()(const Eigen::MatrixXd &sample);
   std::vector<Eigen::MatrixXd> y2; // needs frequencies in Hertz
-  std::vector<Eigen::MatrixXd> y1; 
+  std::vector<Eigen::MatrixXd> y1;
+  std::vector<double> K;
   std::vector<Eigen::MatrixXd> spectral_density(void);
   ~DFTMagicCircle();
 };
@@ -30,8 +29,10 @@ DFTMagicCircle::DFTMagicCircle(Eigen::MatrixXd &empty_sample,
     // convert to radians per sample over two, take sin, then multiply by 2
     K.push_back(2 * std::sin((PI / n_samples) * std::floor(f / sampling_rate)));
     // for each frq, set up both recursion half-step states to zero.
-    y1.push_back(Eigen::MatrixXd::Zero(empty_sample.rows(), empty_sample.cols()));
-    y2.push_back(Eigen::MatrixXd::Zero(empty_sample.rows(), empty_sample.cols()));
+    y1.push_back(
+        Eigen::MatrixXd::Zero(empty_sample.rows(), empty_sample.cols()));
+    y2.push_back(
+        Eigen::MatrixXd::Zero(empty_sample.rows(), empty_sample.cols()));
   }
 }
 
@@ -52,4 +53,3 @@ inline std::vector<Eigen::MatrixXd> DFTMagicCircle::spectral_density() {
 }
 
 DFTMagicCircle::~DFTMagicCircle() {}
-
