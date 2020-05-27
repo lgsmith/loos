@@ -33,16 +33,16 @@ int main() {
   for (auto s : samples) {
     cout << "\n" << s << "\n";
     dft(s);
-    for (auto i = 0; i < frqs.size(); i++) {
-      cout << dft.y1[i] << " " << dft.y2[i] << " ";
+    for (uint i = 0; i < frqs.size(); i++) {
+      cout << dft.get_y1()[i] << " " << dft.get_y2()[i] << " ";
     }
   }
   vector<MatrixXd> J = dft.spectral_density();
   // gain for DFT is approx N/2, so gain on spectrum is (N/2)^2
   const double gain = N_samples * N_samples / 4;
-  for (auto i = 0; i < frqs.size(); i++) {
+  for (uint i = 0; i < frqs.size(); i++) {
     cout << "\nFor frequency:\n"
-         << frqs[i] << "  " <<  dft.k[i] << "\ndensity:\n"
+         << frqs[i] << "  " <<  dft.get_k()[i] << "\ndensity:\n"
          << J[i] / gain << "\n";
   }
   return 0;
