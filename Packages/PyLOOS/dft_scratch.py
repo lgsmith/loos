@@ -5,7 +5,7 @@ t = np.arange(0, 10, 1/rate)
 x = np.sin(2*np.pi*4*t) + np.sin(2*np.pi*7*t) + np.random.randn(len(t))*0.2
 p = np.abs(np.fft.fft(x))**2
 frqs = np.linspace(0, rate/2, len(p))
-
+t_fft = np.fft.fftfreq(x.size, 1/rate)
 # magic circle below here
 E = np.zeros_like(frqs)
 for bin in range(len(frqs)):
@@ -19,5 +19,5 @@ for bin in range(len(frqs)):
 
     E[bin] = y1**2 + y2**2 - k * y1 * y2
 
-plt.plot(frqs, E)# frqs, E)
+plt.plot(t_fft, p, t_fft, E)
 plt.show()
