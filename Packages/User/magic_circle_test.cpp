@@ -38,10 +38,11 @@ int main() {
     }
   }
   vector<MatrixXd> J = dft.spectral_density();
-  const double gain = N_samples * N_samples / 16;
+  // gain for DFT is approx N/2, so gain on spectrum is (N/2)^2
+  const double gain = N_samples * N_samples / 4;
   for (auto i = 0; i < frqs.size(); i++) {
     cout << "\nFor frequency:\n"
-         << frqs[i] << "  " <<  dft.K[i] << "\ndensity:\n"
+         << frqs[i] << "  " <<  dft.k[i] << "\ndensity:\n"
          << J[i] / gain << "\n";
   }
   return 0;
