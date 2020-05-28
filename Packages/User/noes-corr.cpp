@@ -24,6 +24,7 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "DFTMagicCircle.hpp"
 #include "loos.hpp"
 #include <Eigen/Core>
 #include <Eigen/Dense>
@@ -63,6 +64,8 @@ public:
        "Which mixing times to write out for plotting (matlab style range, overrides -m).")
       ("isa,I", po::bool_switch(&isa),
        "If thrown, report relative NOEs without any spin-relaxation.")
+      ("spectral-density,J", po::bool_switch(&spectral_density),
+       "If thrown, use spectral densities for relaxation matrix elts.")
       ("initial-magnetization,M", po::value<double>(&M)->default_value(1),
        "Initial magnetization (M_0) at t=0. If 1 is used, All NOEs relative.");
       
@@ -72,68 +75,19 @@ public:
   // options are set to (for logging purposes)
   string print() const {
     ostringstream oss;
-    oss << boost::format(
-               "ts=%s,w=%d,B=%d,f=%d,t=%d,m=%d,M=%d,buildup-range=%s") %
-               ts % gamma % B % f % t % m % M % buildup_range;
+    oss << boost::format("ts=%s,w=%d,B=%d,f=%d,t=%d,m=%d,M=%d,buildup_range=%s,"
+                         "spectral_density=%b,isa=%b") %
+               ts % gamma % B % f % t % m % M % buildup_range %
+               spectral_density % isa;
     return (oss.str());
   }
-  bool isa;
+  bool isa, spectral_density;
   string ts;
   string buildup_range;
   double gamma, B, f, m, M;
   int t;
 };
 // @endcond
-
-// Class for 'magic circle oscillator' (a-la Clay Turner) selective DFTs
-// Works with matrix valued samples.
-class DFTMagicCircle {
-private:
-  std::vector<Eigen::MatrixXd> y1;
-  std::vector<Eigen::MatrixXd> y2;
-  std::vector<double> k;
-  std::vector<Eigen::MatrixXd> J;
-
-public:
-  // needs frequencies in Hertz
-  DFTMagicCircle(Eigen::MatrixXd &empty_sample, const std::vector<double> &frqs,
-                 const double sampling_rate, const long unsigned int n_samples);
-  void operator()(const Eigen::MatrixXd &sample);
-  typename std::vector<Eigen::MatrixXd> spectral_density(void);
-  ~DFTMagicCircle();
-};
-
-DFTMagicCircle::DFTMagicCircle(Eigen::MatrixXd &empty_sample,
-                               const std::vector<double> &frqs,
-                               const double sampling_rate,
-                               const long unsigned int n_samples) {
-  // buildup k vector with sinusoids corresponding to tracked frqs.
-  for (const auto f : frqs) {
-    // convert to radians per sample over two, take sin, then multiply by 2
-    k.push_back(2 * std::sin((PI / n_samples) * std::floor(f / sampling_rate)));
-    // for each frq, set up both recursion half-step states to zero.
-    y1.push_back(MatrixXd::Zero(empty_sample.rows(), empty_sample.cols()));
-    y2.push_back(MatrixXd::Zero(empty_sample.rows(), empty_sample.cols()));
-  }
-}
-
-inline void DFTMagicCircle::operator()(const Eigen::MatrixXd &sample) {
-  for (auto i = 0; i < k.size(); i++) {
-    // do both DFT sinusoid half steps now
-    y2[i].template triangularView<Eigen::Lower>() += sample - k[i] * y1[i];
-    y1[i].template triangularView<Eigen::Lower>() += k[i] * y2[i];
-  }
-}
-
-inline std::vector<MatrixXd> DFTMagicCircle::spectral_density() {
-  for (auto i = 0; i < k.size(); i++) {
-    J.push_back(y1[i].cwiseAbs2() + y2[i].cwiseAbs2() -
-                (k[i] * y1[i].cwiseProduct(y2[i])));
-  }
-  return J;
-}
-
-DFTMagicCircle::~DFTMagicCircle() {}
 
 // time conversions
 const double ghz2Hz = 1e9;
@@ -155,6 +109,7 @@ int main(int argc, char *argv[]) {
   opts::BasicOptions *bopts = new opts::BasicOptions;
   opts::BasicSelection *sopts = new opts::BasicSelection;
   opts::MultiTrajOptions *mtopts = new opts::MultiTrajOptions;
+  opts::WeightsOptions *wopts = new opts::WeightsOptions;
   ToolOptions *topts = new ToolOptions;
 
   // combine options
@@ -179,11 +134,11 @@ int main(int argc, char *argv[]) {
   // Select the desired atoms to operate over...
   AtomicGroup nuclei = selectAtoms(model, sopts->selection);
   const Eigen::Index N = (Eigen::Index)nuclei.size();
-  vector<vector<uint>> refindex = {{2, 3}};
-  const double refdist = nuclei[refindex[0][0]]->coords().distance(
-      nuclei[refindex[0][1]]->coords());
+  // vector<vector<uint>> refindex = {{2, 3}};
+  // const double refdist = nuclei[refindex[0][0]]->coords().distance(
+  // nuclei[refindex[0][1]]->coords());
 
-  // NMR precalculations
+  // NOE precalculations
   const double mu0 =
       1.25663706212e4; // wikipedia, H/Angstrom (10^10 * value in H/m)
   const double gamma =
@@ -193,34 +148,51 @@ int main(int argc, char *argv[]) {
   // dipolar interaction constant, unit distance per Mole
   const double dd = gamma * gamma * mu0 * hbar / (4 * PI);
   const double dd2 = dd * dd * N_A * 5.0 / (PI * 16);
-  // Magic circle oscillator precomputation:
-  // Larmor frequency, in Hz
-  const double omega = gamma * topts->B * mhz2Hz;
-  vector<double> frqs{0.0, omega, omega * 2};
-  // matrix to hold return values of spherical harmonic calculation on forloop
-  MatrixXd y_2_0 = MatrixXd::Zero(N, N);
-  // Magic Circle oscillator for trackin samples like the above
-  DFTMagicCircle dft(y_2_0, frqs, topts->f, mtopts->frameList().size());
-  // Now iterate over all frames in the skipped & strided trajectory
-  for (auto f : mtopts->frameList()) {
+  MatrixXd sample = MatrixXd::Zero(N, N);
+  MatrixXd R(N, N);
+  if (topts->spectral_density) {
+    // Magic circle oscillator precomputation:
+    // Larmor frequency, in Hz
+    const double omega = gamma * topts->B * mhz2Hz;
+    vector<double> frqs{0.0, omega, omega * 2};
+    // matrix to hold return values of spherical harmonic calculation on forloop
+    // Magic Circle oscillator for trackin samples like the above
+    DFTMagicCircle dft(sample, frqs, topts->f, mtopts->frameList().size());
+    // Now iterate over all frames in the skipped & strided trajectory
+    for (auto f : mtopts->frameList()) {
+      traj->readFrame(f);
+      traj->updateGroupCoords(nuclei);
+      // compute second order index 0 spherical harmonics of all ij pairs.
+      for (auto i = 0; i < N; i++)
+        for (auto j = 0; j < i; j++)
+          sample(i, j) = Y_2_0(nuclei[i]->coords(), nuclei[j]->coords());
 
-    // Update the coordinates ONLY for the subset
-    traj->readFrame(f);
-    traj->updateGroupCoords(nuclei);
-    // Get coords into a tensor (presuming unrolling below)
-    for (auto i = 0; i < N; i++) {
-      for (auto j = 0; j < i; j++) {
-        y_2_0(i, j) = Y_2_0(nuclei[i]->coords(), nuclei[j]->coords());
+      dft(sample);
+    }
+    
+    vector<MatrixXd> J = dft.spectral_density();
+    // compute the spectral densities at each of the three needed freqs
+    // following formula E = y1**2 +y2**2 - k*y1*y2
+    MatrixXd rho((J[0] + (3 * J[1]) + (6 * J[2])).selfadjointView<Lower>());
+    R = (6 * J[2]) - J[0];
+    R.diagonal(0) = rho.colwise().sum();
+  } else { // use r^6 approx/averaging
+    // should really bring in 'tC' here, to be appended to dd2.
+    double d2 = 0; // stores output of squared distance
+    for (auto f : mtopts->frameList()) {
+      traj->readFrame(f);
+      traj->updateGroupCoords(nuclei);
+      // loop over ij distances
+      for (auto i = 0; i < N; i++) {
+        for (auto j = 0; j < i; j++) {
+          d2 = nuclei[i]->coords().distance2(nuclei[j]->coords(), model.periodicBox());
+          sample(i, j) = wopts->weights() /(d2*d2*d2);
+        }
       }
     }
-    dft(y_2_0);
+    // assign to R here.
+    
   }
-  // compute the spectral densities at each of the three needed freqs
-  // following formula E = y1**2 +y2**2 - k*y1*y2
-  vector<MatrixXd> J = dft.spectral_density();
-  MatrixXd rho((J[0] + (3 * J[1]) + (6 * J[2])).selfadjointView<Lower>());
-  MatrixXd R((6 * J[2]) - J[0]);
-  R.diagonal(0) = rho.colwise().sum();
   cout << "this is R, but not in correct units:\n";
   cout << R << endl;
   R *= dd2;
@@ -244,10 +216,7 @@ int main(int argc, char *argv[]) {
   cout << intensities << endl;
   // }
   // create tab delimited intensity report, below
-  cout << "reference intensity and distance:\n"
-       << intensities(refindex[0][0], refindex[0][1]) << " " << refdist << "\n";
-  cout << "# resname\tresid\tname\tindex\tresname\tresid\tname\tindex\tvol\tme"
-          "an_r";
+  cout << "# resname\tresid\tname\tindex\tresname\tresid\tname\tindex\tvol";
   for (auto i = 0; i < N; i++) {
     pAtom ith = nuclei[i];
     for (auto j = i + 1; j < N; j++) {
@@ -256,11 +225,7 @@ int main(int argc, char *argv[]) {
            << ith->resname() << "\t" << ith->resid() << "\t" << ith->name()
            << "\t" << ith->index() << "\t" << jth->resname() << "\t"
            << jth->resid() << "\t" << jth->name() << "\t" << jth->index()
-           << "\t" << intensities(i, j) << "\t"
-           << pow(intensities(i, j) /
-                      intensities(refindex[0][0], refindex[0][1]),
-                  -1.0 / 6) *
-                  refdist;
+           << "\t" << intensities(i, j);
     }
   }
 
