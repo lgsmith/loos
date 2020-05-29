@@ -30,8 +30,8 @@
 #include <Eigen/Dense>
 #include <Eigen/Eigenvalues>
 #include <Eigen/LU>
-#include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
 #define EIGEN_USE_THREADS
 
 using namespace std;
@@ -47,13 +47,12 @@ const string fullHelpMsg = "XXX";
 // @cond TOOLS_INTERNAL
 class ToolOptions : public opts::OptionsPackage {
 public:
-  string approxes = "types:\nISA\nSD\n";
   // clang-format off
   void addGeneric(po::options_description& o) {
     o.add_options()
-      ("time-series,t", po::value<string>(&ts)->default_value(""),
+      ("time-series", po::value<string>(&ts)->default_value(""),
        "(Over)write time series to provided file name. If empty, then not written.")
-      ("nthreads,n", po::value<int>(&t)->default_value(1),
+      ("nthreads,n", po::value<int>(&threads)->default_value(1),
        "Number of threads to use for the calculation.")
       ("gamma,g", po::value<double>(&gamma)->default_value(42.58),
       "Set the gyromagnetic ratio, in MHz/T.")
@@ -63,6 +62,8 @@ public:
        "time-spacing of samples from trajectory, in GHz (frames/ns). A frequency of zero is an error.")
       ("mix,m", po::value<double>(&m)->default_value(0),
       "NOE mixing time, in milliseconds.")
+      ("tau,t", po::value<double>(&tau)->default_value(0),
+       "set a rigid-body correlation time, in ns.")
       ("buildup-curve-range", po::value<std::string>(&buildup_range), 
        "Which mixing times to write out for plotting (matlab style range, overrides -m).")
       ("isa,I", po::bool_switch(&isa),
@@ -80,23 +81,36 @@ public:
     ostringstream oss;
     oss << boost::format("ts=%s,w=%d,B=%d,f=%d,t=%d,m=%d,M=%d,buildup_range=%s,"
                          "spectral_density=%b,isa=%b") %
-               ts % gamma % B % f % t % m % M % buildup_range %
+               ts % gamma % B % f % threads % m % M % buildup_range %
                spectral_density % isa;
     return (oss.str());
+  }
+  bool postConditions(po::variables_map &vm) {
+    if (!buildup_range.empty()) {
+      if (isa) {
+        cerr << "Usage Error:\n"
+             << "You've given a buildup range while also requesting\n"
+             << "an independend spin-pair analysis, where there is no SD.\n";
+        return false;
+      } else {
+      }
+    }
   }
   bool isa, spectral_density;
   string ts;
   string buildup_range;
-  double gamma, B, f, m, M;
-  int t;
+  vector<double> buildups;
+  double gamma, B, f, m, M, tau;
+  int threads;
 };
 // @endcond
 // function to write evolution of TS as JSON
-pt::ptree make_NOE_json(vector<MatrixXd>& intensities, vector<double>& times, AtomicGroup& nuclei){
+pt::ptree make_NOE_json(vector<MatrixXd> &intensities, vector<double> &times,
+                        AtomicGroup &nuclei) {
   pt::ptree root; // we'll build this up, then return it.
   pt::ptree times_node;
   pt::ptree noes_node;
-  for (auto &time : times){
+  for (auto &time : times) {
     pt::ptree time_node;
     time_node.put("", time);
     times_node.push_back(make_pair("", time_node));
@@ -110,7 +124,7 @@ pt::ptree make_NOE_json(vector<MatrixXd>& intensities, vector<double>& times, At
       tag << ith->resname() << ith->resid() << ith->name() << ":"
           << jth->resname() << jth->resid() << jth->name();
       pt::ptree noe_node;
-      for (uint t = 0; t < times.size(); t++){
+      for (uint t = 0; t < times.size(); t++) {
         pt::ptree vol_node;
         vol_node.put("", intensities[t](i, j));
         noe_node.push_back(make_pair("", vol_node));
@@ -123,7 +137,8 @@ pt::ptree make_NOE_json(vector<MatrixXd>& intensities, vector<double>& times, At
 }
 
 // rigid tumbling spectral density, assumes uniform correlation times
-inline vector<MatrixXd> rigid_spectral_density(MatrixXd& dist6, vector<double>& omega, double tau){
+inline vector<MatrixXd>
+rigid_spectral_density(MatrixXd &dist6, vector<double> &omega, double tau) {
   vector<MatrixXd> jvec;
   for (auto w : omega)
     jvec.push_back(dist6 * 2 * tau / (1 + w * w * tau * tau));
@@ -134,6 +149,7 @@ inline vector<MatrixXd> rigid_spectral_density(MatrixXd& dist6, vector<double>& 
 const double ghz2Hz = 1e9;
 const double mhz2Hz = 1e6;
 const double ms2s = 1e-3;
+const double ns2s = 1e-9;
 
 // second order spherical harmonic, with multiples factored out.
 inline const double Y_2_0(const GCoord a, const GCoord b) {
@@ -162,6 +178,8 @@ int main(int argc, char *argv[]) {
   if (!options.parse(argc, argv))
     exit(-1);
 
+  // set up threaded matrix products/decompositions below
+  setNbThreads(topts->threads);
   // Pull the model from the options object (it will include coordinates)
   AtomicGroup model = mtopts->model;
 
@@ -188,6 +206,8 @@ int main(int argc, char *argv[]) {
   // Larmor frequency, in Hz
   const double omega = gamma * topts->B * mhz2Hz;
   vector<double> frqs{0.0, omega, omega * 2};
+  // filled with spectral densities at frqs frequencies, below.
+  vector<MatrixXd> J;
   // matrix to hold return values of calculation in forloop
   MatrixXd sample = MatrixXd::Zero(N, N);
   MatrixXd R(N, N);
@@ -206,15 +226,10 @@ int main(int argc, char *argv[]) {
 
       dft(sample);
     }
-    
-    vector<MatrixXd> J = dft.spectral_density();
-    // compute the spectral densities at each of the three needed freqs
-    // following formula E = y1**2 +y2**2 - k*y1*y2
-    MatrixXd rho((J[0] + (3 * J[1]) + (6 * J[2])).selfadjointView<Lower>());
-    R = (6 * J[2]) - J[0];
-    R.diagonal(0) = rho.colwise().sum();
-  } else { // use r^6 approx/averaging
-    // should really bring in 'tC' here, to be appended to dd2.
+    // compute spectral densities from DFT here.
+    J = dft.spectral_density();
+
+  } else {         // use r^6 approx/averaging
     double d2 = 0; // stores output of squared distance
     for (auto f : mtopts->frameList()) {
       traj->readFrame(f);
@@ -222,57 +237,62 @@ int main(int argc, char *argv[]) {
       // loop over ij distances
       for (auto i = 0; i < N; i++) {
         for (auto j = 0; j < i; j++) {
-          d2 = nuclei[i]->coords().distance2(nuclei[j]->coords(), model.periodicBox());
-          sample(i, j) = wopts->weights() /(d2*d2*d2);
+          d2 = nuclei[i]->coords().distance2(nuclei[j]->coords(),
+                                             model.periodicBox());
+          sample(i, j) += wopts->weights() / (d2 * d2 * d2);
         }
       }
+      wopts->weights.accumulate();
     }
-    // assign to R here.
-    vector<MatrixXd> J = rigid_spectral_density(sample, frqs, topts->tau)
+    // use approximate formula for spectral densitiies here.
+    J = rigid_spectral_density(sample, frqs, topts->tau * ns2s);
   }
-  cout << "this is R, but not in correct units:\n";
-  cout << R << endl;
+  // following van gunsteren, compute spectral density based rho and sigma
+  MatrixXd rho((J[0] + (3 * J[1]) + (6 * J[2])).selfadjointView<Lower>());
+  R = (6 * J[2]) - J[0];
+  R.diagonal(0) = rho.colwise().sum();
+  cout << "this is R, but not in correct units:\n" << R << "\n";
   R *= dd2;
-  cout << "this is R:\n";
-  cout << R << endl;
-  // if (topts->isa) {
-  // do report based on ISA
-
-  // } else {
-  SelfAdjointEigenSolver<MatrixXd> es(R);
-  cout << es.eigenvalues() << endl;
-  MatrixXd evolved_vals = (es.eigenvalues() * (-topts->m * ms2s))
-                              .array()
-                              .exp()
-                              .matrix()
-                              .asDiagonal();
-  cout << "this is evolved_vals:\n" << evolved_vals << endl;
-  MatrixXd intensities = es.eigenvectors() * evolved_vals *
-                         es.eigenvectors().inverse() *
-                         (topts->M * MatrixXd::Identity(N, N));
-  cout << intensities << endl;
-  // }
-  // create tab delimited intensity report, below
-  cout << "# resname\tresid\tname\tindex\tresname\tresid\tname\tindex\tvol";
-  for (auto i = 0; i < N; i++) {
-    pAtom ith = nuclei[i];
-    for (auto j = i + 1; j < N; j++) {
-      pAtom jth = nuclei[j];
-      cout << "\n"
-           << ith->resname() << "\t" << ith->resid() << "\t" << ith->name()
-           << "\t" << ith->index() << "\t" << jth->resname() << "\t"
-           << jth->resid() << "\t" << jth->name() << "\t" << jth->index()
-           << "\t" << intensities(i, j);
+  cout << "this is R:\n" << R << "\n";
+  vector<MatrixXd> intensities;
+  pt::ptree jsontree;
+  if (topts->isa) {
+    jsontree = make_NOE_json(intensities, topts->buildups, nuclei);
+  } else {
+    SelfAdjointEigenSolver<MatrixXd> es(R);
+    cout << es.eigenvalues() << endl;
+    MatrixXd evolved_vals = (es.eigenvalues() * (-topts->m * ms2s))
+                                .array()
+                                .exp()
+                                .matrix()
+                                .asDiagonal();
+    cout << "this is evolved_vals:\n" << evolved_vals << endl;
+    MatrixXd intensities = es.eigenvectors() * evolved_vals *
+                           es.eigenvectors().inverse() *
+                           (topts->M * MatrixXd::Identity(N, N));
+    cout << intensities << endl;
+    // }
+    // create tab delimited intensity report, below
+    cout << "# resname\tresid\tname\tindex\tresname\tresid\tname\tindex\tvol";
+    for (auto i = 0; i < N; i++) {
+      pAtom ith = nuclei[i];
+      for (auto j = i + 1; j < N; j++) {
+        pAtom jth = nuclei[j];
+        cout << "\n"
+             << ith->resname() << "\t" << ith->resid() << "\t" << ith->name()
+             << "\t" << ith->index() << "\t" << jth->resname() << "\t"
+             << jth->resid() << "\t" << jth->name() << "\t" << jth->index()
+             << "\t" << intensities(i, j);
+      }
     }
-  }
 
-  ComputationInfo es_info = es.info();
-  if (es_info == Success)
-    cout << "\nEigendecomposition successful.\n";
-  if (es_info == NumericalIssue)
-    cout << "\nEigendecomposition ran into a numerical issue.\n";
-  if (es_info == NoConvergence)
-    cout << "\nEigendecomposition did not converge.\n";
-  if (es_info == InvalidInput)
-    cout << "\nEigendecomposition was given invalid input.\n";
-}
+    ComputationInfo es_info = es.info();
+    if (es_info == Success)
+      cout << "\nEigendecomposition successful.\n";
+    if (es_info == NumericalIssue)
+      cout << "\nEigendecomposition ran into a numerical issue.\n";
+    if (es_info == NoConvergence)
+      cout << "\nEigendecomposition did not converge.\n";
+    if (es_info == InvalidInput)
+      cout << "\nEigendecomposition was given invalid input.\n";
+  }
