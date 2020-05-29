@@ -30,6 +30,8 @@
 #include <Eigen/Dense>
 #include <Eigen/Eigenvalues>
 #include <Eigen/LU>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
 #define EIGEN_USE_THREADS
 
 using namespace std;
@@ -38,6 +40,7 @@ using namespace Eigen;
 
 namespace opts = loos::OptionsFramework;
 namespace po = loos::OptionsFramework::po;
+namespace pt = boost::property_tree;
 
 const string fullHelpMsg = "XXX";
 
@@ -88,6 +91,44 @@ public:
   int t;
 };
 // @endcond
+// function to write evolution of TS as JSON
+pt::ptree make_NOE_json(vector<MatrixXd>& intensities, vector<double>& times, AtomicGroup& nuclei){
+  pt::ptree root; // we'll build this up, then return it.
+  pt::ptree times_node;
+  pt::ptree noes_node;
+  for (auto &time : times){
+    pt::ptree time_node;
+    time_node.put("", time);
+    times_node.push_back(make_pair("", time_node));
+  }
+  root.add_child("mixing times", times_node);
+  for (auto i = 0; i < nuclei.size(); i++) {
+    pAtom ith = nuclei[i];
+    for (auto j = i + 1; j < nuclei.size(); j++) {
+      pAtom jth = nuclei[j];
+      ostringstream tag;
+      tag << ith->resname() << ith->resid() << ith->name() << ":"
+          << jth->resname() << jth->resid() << jth->name();
+      pt::ptree noe_node;
+      for (uint t = 0; t < times.size(); t++){
+        pt::ptree vol_node;
+        vol_node.put("", intensities[t](i, j));
+        noe_node.push_back(make_pair("", vol_node));
+      }
+      noes_node.put(tag.str(), noe_node);
+    }
+  }
+  root.add_child("noes", noes_node);
+  return root;
+}
+
+// rigid tumbling spectral density, assumes uniform correlation times
+inline vector<MatrixXd> rigid_spectral_density(MatrixXd& dist6, vector<double>& omega, double tau){
+  vector<MatrixXd> jvec;
+  for (auto w : omega)
+    jvec.push_back(dist6 * 2 * tau / (1 + w * w * tau * tau));
+  return jvec;
+}
 
 // time conversions
 const double ghz2Hz = 1e9;
@@ -134,10 +175,6 @@ int main(int argc, char *argv[]) {
   // Select the desired atoms to operate over...
   AtomicGroup nuclei = selectAtoms(model, sopts->selection);
   const Eigen::Index N = (Eigen::Index)nuclei.size();
-  // vector<vector<uint>> refindex = {{2, 3}};
-  // const double refdist = nuclei[refindex[0][0]]->coords().distance(
-  // nuclei[refindex[0][1]]->coords());
-
   // NOE precalculations
   const double mu0 =
       1.25663706212e4; // wikipedia, H/Angstrom (10^10 * value in H/m)
@@ -148,14 +185,14 @@ int main(int argc, char *argv[]) {
   // dipolar interaction constant, unit distance per Mole
   const double dd = gamma * gamma * mu0 * hbar / (4 * PI);
   const double dd2 = dd * dd * N_A * 5.0 / (PI * 16);
+  // Larmor frequency, in Hz
+  const double omega = gamma * topts->B * mhz2Hz;
+  vector<double> frqs{0.0, omega, omega * 2};
+  // matrix to hold return values of calculation in forloop
   MatrixXd sample = MatrixXd::Zero(N, N);
   MatrixXd R(N, N);
   if (topts->spectral_density) {
     // Magic circle oscillator precomputation:
-    // Larmor frequency, in Hz
-    const double omega = gamma * topts->B * mhz2Hz;
-    vector<double> frqs{0.0, omega, omega * 2};
-    // matrix to hold return values of spherical harmonic calculation on forloop
     // Magic Circle oscillator for trackin samples like the above
     DFTMagicCircle dft(sample, frqs, topts->f, mtopts->frameList().size());
     // Now iterate over all frames in the skipped & strided trajectory
@@ -191,7 +228,7 @@ int main(int argc, char *argv[]) {
       }
     }
     // assign to R here.
-    
+    vector<MatrixXd> J = rigid_spectral_density(sample, frqs, topts->tau)
   }
   cout << "this is R, but not in correct units:\n";
   cout << R << endl;

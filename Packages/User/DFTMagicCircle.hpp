@@ -16,12 +16,14 @@ public:
                  const double sampling_rate, const unsigned int n_samples);
   void operator()(const SampleType &sample);
   std::vector<SampleType> spectral_density(bool recompute = false);
+  // setters and getters
   std::vector<SampleType> get_y2(void);
   void set_y2(std::vector<SampleType> &recur2);
   std::vector<SampleType> get_y1(void);
   void set_y1(std::vector<SampleType> &recur1);
   std::vector<double> get_k(void);
   void set_k(std::vector<double> &frqs);
+  // end setters and getters
   ~DFTMagicCircle();
 };
 
