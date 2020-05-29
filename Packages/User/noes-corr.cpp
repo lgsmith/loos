@@ -257,36 +257,25 @@ int main(int argc, char *argv[]) {
   vector<MatrixXd> intensities;
   pt::ptree jsontree;
   if (topts->isa) {
-    jsontree = make_NOE_json(intensities, topts->buildups, nuclei);
+    vector<double> mix{topts->m*ms2s};
+    intensities.push_back(move(R * mix[0]));
+    jsontree = make_NOE_json(intensities, mix, nuclei);
   } else {
     SelfAdjointEigenSolver<MatrixXd> es(R);
-    cout << es.eigenvalues() << endl;
-    MatrixXd evolved_vals = (es.eigenvalues() * (-topts->m * ms2s))
-                                .array()
-                                .exp()
-                                .matrix()
-                                .asDiagonal();
-    cout << "this is evolved_vals:\n" << evolved_vals << endl;
-    MatrixXd intensities = es.eigenvectors() * evolved_vals *
-                           es.eigenvectors().inverse() *
-                           (topts->M * MatrixXd::Identity(N, N));
-    cout << intensities << endl;
-    // }
-    // create tab delimited intensity report, below
-    cout << "# resname\tresid\tname\tindex\tresname\tresid\tname\tindex\tvol";
-    for (auto i = 0; i < N; i++) {
-      pAtom ith = nuclei[i];
-      for (auto j = i + 1; j < N; j++) {
-        pAtom jth = nuclei[j];
-        cout << "\n"
-             << ith->resname() << "\t" << ith->resid() << "\t" << ith->name()
-             << "\t" << ith->index() << "\t" << jth->resname() << "\t"
-             << jth->resid() << "\t" << jth->name() << "\t" << jth->index()
-             << "\t" << intensities(i, j);
-      }
+    MatrixXd eVecs = es.eigenvectors();
+    MatrixXd invEvecs = eVecs.inverse();
+
+    for (const auto time : topts->buildups){
+      intensities.push_back(
+        eVecs * 
+        (es.eigenvalues() * (-time * ms2s)).array().exp().matrix().asDiagonal() *
+        invEvecs * (topts->M * MatrixXd::Identity(N, N))
+      );
     }
+    
 
     ComputationInfo es_info = es.info();
+    string comp_info_tag = "eigensolver";
     if (es_info == Success)
       cout << "\nEigendecomposition successful.\n";
     if (es_info == NumericalIssue)
@@ -296,3 +285,4 @@ int main(int argc, char *argv[]) {
     if (es_info == InvalidInput)
       cout << "\nEigendecomposition was given invalid input.\n";
   }
+}
