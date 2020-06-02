@@ -273,16 +273,17 @@ int main(int argc, char *argv[]) {
       );
     }
     
-
+    jsontree = make_NOE_json(intensities, topts->buildups, nuclei);
     ComputationInfo es_info = es.info();
     string comp_info_tag = "eigensolver";
     if (es_info == Success)
-      cout << "\nEigendecomposition successful.\n";
+      jsontree.put(comp_info_tag, "\nEigendecomposition successful.\n");
     if (es_info == NumericalIssue)
-      cout << "\nEigendecomposition ran into a numerical issue.\n";
+      jsontree.put(comp_info_tag, "\nEigendecomposition ran into a numerical issue.\n");
     if (es_info == NoConvergence)
-      cout << "\nEigendecomposition did not converge.\n";
+      jsontree.put(comp_info_tag, "\nEigendecomposition did not converge.\n");
     if (es_info == InvalidInput)
-      cout << "\nEigendecomposition was given invalid input.\n";
+      jsontree.put(comp_info_tag, "\nEigendecomposition was given invalid input.\n");
+    pt.write_json(cout, jsontree);
   }
 }
