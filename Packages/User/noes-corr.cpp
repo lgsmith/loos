@@ -189,6 +189,8 @@ int main(int argc, char *argv[]) {
 
   // Pull out the trajectory...
   pTraj traj = mtopts->trajectory;
+  // if no weights file, will emit '1.0' in following code as default.
+  wopts->weights->add_traj(traj);
   if (mtopts->mtraj.nframes() == 0) {
     cout << "ERROR: can't work with zero frames.\n";
     exit(-1);
@@ -243,10 +245,10 @@ int main(int argc, char *argv[]) {
         for (auto j = 0; j < i; j++) {
           d2 = nuclei[i]->coords().distance2(nuclei[j]->coords(),
                                              model.periodicBox());
-          sample(i, j) += wopts->weights() / (d2 * d2 * d2);
+          sample(i, j) += wopts->weights->get() / (d2 * d2 * d2);
         }
       }
-      wopts->weights.accumulate();
+      wopts->weights->accumulate();
     }
     // use approximate formula for spectral densitiies here.
     J = rigid_spectral_density(sample, frqs, topts->tau * ns2s);
