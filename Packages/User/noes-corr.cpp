@@ -288,6 +288,6 @@ int main(int argc, char *argv[]) {
       jsontree.put(comp_info_tag, "\nEigendecomposition did not converge.\n");
     if (es_info == InvalidInput)
       jsontree.put(comp_info_tag, "\nEigendecomposition was given invalid input.\n");
-    write_json(cout, jsontree);
+    pt::write_json(cout, jsontree);
   }
 }
