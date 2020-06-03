@@ -30,8 +30,10 @@
 #include <Eigen/Dense>
 #include <Eigen/Eigenvalues>
 #include <Eigen/LU>
-#include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
+#include <string>
+#include <vector>
 #define EIGEN_USE_THREADS
 
 using namespace std;
@@ -93,8 +95,10 @@ public:
              << "an independend spin-pair analysis, where there is no SD.\n";
         return false;
       } else {
+        return true;
       }
     }
+    return true;
   }
   bool isa, spectral_density;
   string ts;
@@ -116,9 +120,9 @@ pt::ptree make_NOE_json(vector<MatrixXd> &intensities, vector<double> &times,
     times_node.push_back(make_pair("", time_node));
   }
   root.add_child("mixing times", times_node);
-  for (auto i = 0; i < nuclei.size(); i++) {
+  for (size_t i = 0; i < nuclei.size(); i++) {
     pAtom ith = nuclei[i];
-    for (auto j = i + 1; j < nuclei.size(); j++) {
+    for (size_t j = i + 1; j < nuclei.size(); j++) {
       pAtom jth = nuclei[j];
       ostringstream tag;
       tag << ith->resname() << ith->resid() << ith->name() << ":"
@@ -129,7 +133,7 @@ pt::ptree make_NOE_json(vector<MatrixXd> &intensities, vector<double> &times,
         vol_node.put("", intensities[t](i, j));
         noe_node.push_back(make_pair("", vol_node));
       }
-      noes_node.put(tag.str(), noe_node);
+      noes_node.add_child(tag.str(), noe_node);
     }
   }
   root.add_child("noes", noes_node);
@@ -284,6 +288,6 @@ int main(int argc, char *argv[]) {
       jsontree.put(comp_info_tag, "\nEigendecomposition did not converge.\n");
     if (es_info == InvalidInput)
       jsontree.put(comp_info_tag, "\nEigendecomposition was given invalid input.\n");
-    pt.write_json(cout, jsontree);
+    write_json(cout, jsontree);
   }
 }
