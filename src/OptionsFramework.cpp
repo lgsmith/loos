@@ -588,8 +588,7 @@ namespace loos {
       }
       if (map.count("weights")) {
         has_weights = true;
-        Weights weightsFromFile = Weights(weights_name);
-        weights = & weightsFromFile;
+        weights = std::make_unique<Weights>(Weights(weights_name));
       } else if (map.count("weights-list")) {
         has_weights = true;
         weights->read_weights_list(list_name);
@@ -597,12 +596,12 @@ namespace loos {
       {
         has_weights = false;
         // Default to the uniform weight class if no weights-file specified.
-        UniformWeight uniform = UniformWeight();
-        weights = & uniform;
+        weights = std::make_unique<UniformWeight>(UniformWeight());
       }
 
       return true;
     }
+    
 
     // -------------------------------------------------------
 
