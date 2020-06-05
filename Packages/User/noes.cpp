@@ -70,7 +70,7 @@ int main(int argc, char *argv[])
   vector<uint> indices = mtopts->frameList();
   if (wopts->has_weights)
   {
-    wopts->weights.add_traj(traj);
+    wopts->weights->add_traj(traj);
 
     for (vector<uint>::iterator i = indices.begin(); i != indices.end(); ++i)
     {
@@ -90,10 +90,10 @@ int main(int argc, char *argv[])
         //       accumulating, we could then do PCA and pick out
         //       structural transitions
         // Here incorporate frame weight as numerator of 1/r^6
-        get<2>(*p) += wopts->weights() / (d2 * d2 * d2);
+        get<2>(*p) += wopts->weights->get() / (d2 * d2 * d2);
       }
       // Track the amount of weight used, rather than the frameno
-      wopts->weights.accumulate();
+      wopts->weights->accumulate();
     }
   }
   else
@@ -137,7 +137,7 @@ int main(int argc, char *argv[])
     double val;
     if (wopts->has_weights)
     {
-      val = get<2>(*p) / wopts->weights.totalWeight();
+      val = get<2>(*p) / wopts->weights->totalWeight();
     }
     else
     {
