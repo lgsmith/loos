@@ -95,6 +95,7 @@ public:
              << "an independend spin-pair analysis, where there is no SD.\n";
         return false;
       } else {
+        buildups = parseRange(buildup_range);
         return true;
       }
     }
@@ -175,7 +176,7 @@ int main(int argc, char *argv[]) {
 
   // combine options
   opts::AggregateOptions options;
-  options.add(bopts).add(sopts).add(mtopts).add(topts);
+  options.add(bopts).add(sopts).add(mtopts).add(wopts).add(topts);
 
   // Parse the command-line.  If an error occurred, help will already
   // be displayed and it will return a FALSE value.
@@ -290,6 +291,7 @@ int main(int argc, char *argv[]) {
       jsontree.put(comp_info_tag, "\nEigendecomposition did not converge.\n");
     if (es_info == InvalidInput)
       jsontree.put(comp_info_tag, "\nEigendecomposition was given invalid input.\n");
-    pt::write_json(cout, jsontree);
   }
+  jsontree.put("invocation", header);
+  pt::write_json(cout, jsontree);
 }
