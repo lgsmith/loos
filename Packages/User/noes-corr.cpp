@@ -208,8 +208,8 @@ int main(int argc, char *argv[]) {
   const double hbar = 1.054571817e-34; // wikipedia, J*s
   const double N_A = 6.02214076e24;    // Wikipedia, Avogadro's Constant
   // dipolar interaction constant, unit distance per Mole
-  const double dd = gamma * gamma * mu0 * hbar * N_A / (4 * PI);
-  const double dd2 = dd * dd * 5.0 / (PI * 16);
+  const double dd = gamma * gamma * mu0 * hbar / (4 * PI);
+  const double dd2 = N_A * dd * dd * 5.0 / (PI * 16);
   // Larmor frequency, in Hz
   const double omega = gamma * topts->B * mhz2Hz;
   vector<double> frqs{0.0, omega, omega * 2};
