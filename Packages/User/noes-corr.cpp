@@ -64,13 +64,13 @@ public:
        "time-spacing of samples from trajectory, in GHz (frames/ns). A frequency of zero is an error.")
       ("mix,m", po::value<double>(&m)->default_value(0),
       "NOE mixing time, in milliseconds.")
-      ("tau,t", po::value<double>(&tau)->default_value(0),
+      ("tau", po::value<double>(&tau)->default_value(0),
        "set a rigid-body correlation time, in ns.")
       ("buildup-curve-range", po::value<std::string>(&buildup_range), 
        "Which mixing times to write out for plotting (matlab style range, overrides -m).")
-      ("isa,I", po::bool_switch(&isa),
+      ("isa,I", po::bool_switch(&isa)->default_value(false),
        "If thrown, report relative NOEs without any spin-relaxation.")
-      ("spectral-density,J", po::bool_switch(&spectral_density),
+      ("spectral-density,J", po::bool_switch(&spectral_density)->default_value(false),
        "If thrown, use spectral densities for relaxation matrix elts.")
       ("initial-magnetization,M", po::value<double>(&M)->default_value(1),
        "Initial magnetization (M_0) at t=0. If 1 is used, All NOEs relative.");
@@ -95,7 +95,7 @@ public:
              << "an independend spin-pair analysis, where there is no SD.\n";
         return false;
       } else {
-        buildups = parseRange(buildup_range);
+        buildups = parseRange<double>(buildup_range);
         return true;
       }
     }
@@ -143,10 +143,10 @@ pt::ptree make_NOE_json(vector<MatrixXd> &intensities, vector<double> &times,
 
 // rigid tumbling spectral density, assumes uniform correlation times
 inline vector<MatrixXd>
-rigid_spectral_density(MatrixXd &dist6, vector<double> &omega, double tau) {
+rigid_spectral_density(MatrixXd &dist6, vector<double> &omega, const double tau, const double total_weight) {
   vector<MatrixXd> jvec;
   for (auto w : omega)
-    jvec.push_back(dist6 * 2 * tau / (1 + w * w * tau * tau));
+    jvec.push_back(dist6 * 2 * tau / ((1 + w * w * tau * tau) * total_weight));
   return jvec;
 }
 
@@ -252,7 +252,7 @@ int main(int argc, char *argv[]) {
       wopts->weights->accumulate();
     }
     // use approximate formula for spectral densitiies here.
-    J = rigid_spectral_density(sample, frqs, topts->tau * ns2s);
+    J = rigid_spectral_density(sample, frqs, topts->tau * ns2s, wopts->weights->totalWeight());
   }
   // following van gunsteren, compute spectral density based rho and sigma
   MatrixXd rho((J[0] + (3 * J[1]) + (6 * J[2])).selfadjointView<Lower>());
@@ -263,6 +263,7 @@ int main(int argc, char *argv[]) {
   cout << "this is R:\n" << R << "\n";
   vector<MatrixXd> intensities;
   pt::ptree jsontree;
+  jsontree.put("invocation", header);
   if (topts->isa) {
     vector<double> mix{topts->m*ms2s};
     intensities.push_back(move(R * mix[0]));
@@ -273,6 +274,7 @@ int main(int argc, char *argv[]) {
     MatrixXd invEvecs = eVecs.inverse();
 
     for (const auto time : topts->buildups){
+      cout << "time: " << time << "\n";
       intensities.push_back(
         eVecs * 
         (es.eigenvalues() * (-time * ms2s)).array().exp().matrix().asDiagonal() *
@@ -284,14 +286,13 @@ int main(int argc, char *argv[]) {
     ComputationInfo es_info = es.info();
     string comp_info_tag = "eigensolver";
     if (es_info == Success)
-      jsontree.put(comp_info_tag, "\nEigendecomposition successful.\n");
+      jsontree.put(comp_info_tag, "Eigendecomposition successful.");
     if (es_info == NumericalIssue)
-      jsontree.put(comp_info_tag, "\nEigendecomposition ran into a numerical issue.\n");
+      jsontree.put(comp_info_tag, "Eigendecomposition ran into a numerical issue.");
     if (es_info == NoConvergence)
-      jsontree.put(comp_info_tag, "\nEigendecomposition did not converge.\n");
+      jsontree.put(comp_info_tag, "Eigendecomposition did not converge.");
     if (es_info == InvalidInput)
-      jsontree.put(comp_info_tag, "\nEigendecomposition was given invalid input.\n");
+      jsontree.put(comp_info_tag, "Eigendecomposition was given invalid input.");
   }
-  jsontree.put("invocation", header);
   pt::write_json(cout, jsontree);
 }
