@@ -115,7 +115,7 @@ pt::ptree make_NOE_json(vector<MatrixXd> &intensities, vector<double> &times,
   pt::ptree root; // we'll build this up, then return it.
   pt::ptree times_node;
   pt::ptree noes_node;
-  for (auto &time : times) {
+  for (const auto &time : times) {
     pt::ptree time_node;
     time_node.put("", time);
     times_node.push_back(make_pair("", time_node));
@@ -208,8 +208,8 @@ int main(int argc, char *argv[]) {
   const double hbar = 1.054571817e-34; // wikipedia, J*s
   const double N_A = 6.02214076e24;    // Wikipedia, Avogadro's Constant
   // dipolar interaction constant, unit distance per Mole
-  const double dd = gamma * gamma * mu0 * hbar / (4 * PI);
-  const double dd2 = dd * dd * N_A * 5.0 / (PI * 16);
+  const double dd = gamma * gamma * mu0 * hbar * N_A / (4 * PI);
+  const double dd2 = dd * dd * 5.0 / (PI * 16);
   // Larmor frequency, in Hz
   const double omega = gamma * topts->B * mhz2Hz;
   vector<double> frqs{0.0, omega, omega * 2};
@@ -270,18 +270,34 @@ int main(int argc, char *argv[]) {
     jsontree = make_NOE_json(intensities, mix, nuclei);
   } else {
     SelfAdjointEigenSolver<MatrixXd> es(R);
+    R = R.selfadjointView<Lower>();
     MatrixXd eVecs = es.eigenvectors();
+    cout << "eVecs:\n" << eVecs << endl;
     MatrixXd invEvecs = eVecs.inverse();
-
-    for (const auto time : topts->buildups){
-      cout << "time: " << time << "\n";
-      intensities.push_back(
-        eVecs * 
-        (es.eigenvalues() * (-time * ms2s)).array().exp().matrix().asDiagonal() *
-        invEvecs * (topts->M * MatrixXd::Identity(N, N))
-      );
+    cout << "invEvecs:\n" << invEvecs << endl;
+    cout << "R - eVecs*evals*invEvecs:\n" 
+         << R - (eVecs * es.eigenvalues().asDiagonal() * invEvecs) 
+         << endl;
+    if (topts->M == 1.0){
+      for (const auto time : topts->buildups){
+        cout << "time: " << time << "\n";
+        intensities.push_back(
+          eVecs * 
+          (es.eigenvalues() * (-time * ms2s)).array().exp().matrix().asDiagonal() *
+          invEvecs
+        );
+        cout << intensities.back() << endl;
+      }
+    } else {
+      for (const auto time : topts->buildups){
+        cout << "time: " << time << "\n";
+        intensities.push_back(
+          eVecs * 
+          (es.eigenvalues() * (-time * ms2s)).array().exp().matrix().asDiagonal() *
+          invEvecs * (topts->M * MatrixXd::Identity(N, N))
+        );
+      }
     }
-    
     jsontree = make_NOE_json(intensities, topts->buildups, nuclei);
     ComputationInfo es_info = es.info();
     string comp_info_tag = "eigensolver";
