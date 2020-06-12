@@ -206,7 +206,7 @@ int main(int argc, char *argv[]) {
   const double gamma =
       topts->gamma * 2 * PI * mhz2Hz;  // convert Gamma from mHz/T to Rad/s*T
   const double hbar = 1.054571817e-34; // wikipedia, J*s
-  const double N_A = 6.02214076e24;    // Wikipedia, Avogadro's Constant
+  const double N_A = 6.02214076e23;    // Wikipedia, Avogadro's Constant
   // dipolar interaction constant, unit distance per Mole
   const double dd = gamma * gamma * mu0 * hbar / (4 * PI);
   const double dd2 = N_A * dd * dd * 5.0 / (PI * 16);
