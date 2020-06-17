@@ -54,8 +54,6 @@ public:
     o.add_options()
       ("time-series", po::value<string>(&ts)->default_value(""),
        "(Over)write time series to provided file name. If empty, then not written.")
-      ("nthreads,n", po::value<int>(&threads)->default_value(1),
-       "Number of threads to use for the calculation.")
       ("gamma,g", po::value<double>(&gamma)->default_value(42.577478518),
       "Set the gyromagnetic ratio, in MHz/T.")
       ("field-strength,B", po::value<double>(&B)->default_value(14.1),
@@ -187,8 +185,6 @@ int main(int argc, char *argv[]) {
   if (!options.parse(argc, argv))
     exit(-1);
 
-  // set up threaded matrix products/decompositions below
-  setNbThreads(topts->threads);
   // Pull the model from the options object (it will include coordinates)
   AtomicGroup model = mtopts->model;
 
