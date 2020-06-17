@@ -52,8 +52,6 @@ public:
   // clang-format off
   void addGeneric(po::options_description& o) {
     o.add_options()
-      ("time-series", po::value<string>(&ts)->default_value(""),
-       "(Over)write time series to provided file name. If empty, then not written.")
       ("gamma,g", po::value<double>(&gamma)->default_value(42.577478518),
       "Set the gyromagnetic ratio, in MHz/T.")
       ("field-strength,B", po::value<double>(&B)->default_value(14.1),
@@ -220,6 +218,7 @@ int main(int argc, char *argv[]) {
   vector<MatrixXd> J;
   // matrix to hold return values of calculation in forloop
   MatrixXd sample = MatrixXd::Zero(N, N);
+
   if (topts->spectral_density) {
     // Magic circle oscillator precomputation:
     // Magic Circle oscillator for trackin samples like the above
