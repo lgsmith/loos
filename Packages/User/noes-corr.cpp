@@ -53,17 +53,21 @@ public:
   void addGeneric(po::options_description& o) {
     o.add_options()
       ("gamma,g", po::value<double>(&gamma)->default_value(42.577478518),
-      "Set the gyromagnetic ratio, in MHz/T.")
+       "Set the gyromagnetic ratio, in MHz/T.")
       ("field-strength,B", po::value<double>(&B)->default_value(14.1),
        "Set the value of the experimental field strength, in T.")
       ("sampling-freq,f", po::value<double>(&f)->default_value(1),
        "time-spacing of samples from trajectory, in GHz (frames/ns). A frequency of zero is an error.")
       ("mix,m", po::value<double>(&m)->default_value(0),
-      "NOE mixing time, in milliseconds.")
+       "NOE mixing time, in milliseconds.")
       ("tau", po::value<double>(&tau)->default_value(0),
        "set a rigid-body correlation time, in ns.")
       ("buildup-curve-range", po::value<std::string>(&buildup_range), 
        "Which mixing times to write out for plotting (matlab style range, overrides -m).")
+      ("overlap", po::value<double>(&overlap)->default_value(0.5),
+       "Fraction of overlap between DFT segments.")
+      ("bin-width", po::value<double>(&bin_width)->default_value(10.0),
+       "Width for DFT bins, in kHz.")
       ("isa,I", po::bool_switch(&isa)->default_value(false),
        "If thrown, report relative NOEs without any spin-relaxation.")
       ("spectral-density,J", po::bool_switch(&spectral_density)->default_value(false),
@@ -78,9 +82,9 @@ public:
   string print() const {
     ostringstream oss;
     oss << boost::format("ts=%s,w=%d,B=%d,f=%d,t=%d,m=%d,M=%d,buildup_range=%s,"
-                         "spectral_density=%b,isa=%b") %
+                         "spectral_density=%b,isa=%b,overlap=%d") %
                ts % gamma % B % f % threads % m % M % buildup_range %
-               spectral_density % isa;
+               spectral_density % isa % overlap;
     return (oss.str());
   }
   bool postConditions(po::variables_map &vm) {
@@ -101,7 +105,7 @@ public:
   string ts;
   string buildup_range;
   vector<double> buildups;
-  double gamma, B, f, m, M, tau;
+  double gamma, B, f, m, M, tau, overlap, bin_width;
   int threads;
 };
 // @endcond
@@ -153,6 +157,7 @@ inline vector<MatrixXd> rigid_spectral_density(MatrixXd &dist6,
 // time conversions
 const double ghz2Hz = 1e9;
 const double mhz2Hz = 1e6;
+const double khz2Hz = 1e3;
 const double ms2s = 1e-3;
 const double ns2s = 1e-9;
 
@@ -220,9 +225,14 @@ int main(int argc, char *argv[]) {
   MatrixXd sample = MatrixXd::Zero(N, N);
 
   if (topts->spectral_density) {
+    // get the framerate into Hertz
+    const double framerate = topts->f * ghz2Hz;
+    const double bin_width = topts->bin_width * khz2Hz;
+    // compute fragments to Fourier Transform
+    const uint frames_per_ft = (uint) mtopts->frameList().size() * framerate / bin_width;
     // Magic circle oscillator precomputation:
     // Magic Circle oscillator for trackin samples like the above
-    DFTMagicCircle dft(sample, frqs, topts->f, mtopts->frameList().size());
+    DFTMagicCircle dft(sample, frqs, framerate, mtopts->frameList().size());
     // Now iterate over all frames in the skipped & strided trajectory
     for (auto f : mtopts->frameList()) {
       traj->readFrame(f);
