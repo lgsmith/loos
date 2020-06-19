@@ -230,7 +230,9 @@ int main(int argc, char *argv[]) {
     const double bin_width = topts->bin_width * khz2Hz;
     // compute fragments to Fourier Transform
     const uint frames_per_ft = (uint) framerate / bin_width;
-    if (frames_per_ft < mtopts->frameList().size())
+    if (frames_per_ft < mtopts->frameList().size()){
+      
+    }
     // Magic circle oscillator precomputation:
     // Magic Circle oscillator for trackin samples like the above
     DFTMagicCircle dft(sample, frqs, framerate, mtopts->frameList().size());
