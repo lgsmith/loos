@@ -30,6 +30,7 @@
 #include <Eigen/Dense>
 #include <Eigen/Eigenvalues>
 #include <Eigen/LU>
+#include <unsupported/Eigen/CXX11/Tensor>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <string>
@@ -230,6 +231,7 @@ int main(int argc, char *argv[]) {
     const double bin_width = topts->bin_width * khz2Hz;
     // compute fragments to Fourier Transform
     const uint frames_per_ft = (uint) framerate / bin_width;
+    const uint framefrac = frames_per_ft / mtopts->frameList().size();       
     if (frames_per_ft < mtopts->frameList().size()){
       
     }
