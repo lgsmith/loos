@@ -25,16 +25,16 @@
 */
 
 #include "DFTMagicCircle.hpp"
-#include "loos.hpp"
 #include "dft_helpers.hpp"
+#include "loos.hpp"
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <Eigen/Eigenvalues>
 #include <Eigen/LU>
-#include <unsupported/Eigen/CXX11/Tensor>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <string>
+#include <unsupported/Eigen/CXX11/Tensor>
 #include <vector>
 #define EIGEN_USE_THREADS
 
@@ -86,11 +86,12 @@ public:
   string print() const {
     ostringstream oss;
     oss << boost::format("ts=%s,w=%d,B=%d,f=%d,t=%d,m=%d,M=%d,buildup_range=%s,"
-                         "spectral_density=%b,isa=%b,overlap=%d") %
+                         "spectral_density=%b,isa=%b,overlap=%d,corr=%b") %
                ts % gamma % B % f % threads % m % M % buildup_range %
-               spectral_density % isa % overlap;
+               spectral_density % isa % overlap % corr;
     return (oss.str());
   }
+  // this function post-processes conditional input for the tool options
   bool postConditions(po::variables_map &vm) {
     if (!buildup_range.empty()) {
       if (isa) {
@@ -102,6 +103,11 @@ public:
         buildups = parseRange<double>(buildup_range);
         return true;
       }
+    }
+    if (spectral_density && corr) {
+      cerr << "Usage Error: --spectral-density && --correlation\n"
+           << "You've asked for two different methods of computing the "
+              "spectral density. Pick one.\n";
     }
     return true;
   }
@@ -213,7 +219,7 @@ int main(int argc, char *argv[]) {
   const double gamma =
       topts->gamma * 2.0 * PI * mhz2Hz; // convert Gamma from mHz/T to Rad/s*T
   const double hbar = 1.054571817e-34;  // wikipedia, J*s
-  const double N_A = 6.02214076e23;    // Wikipedia, Avogadro's Constant
+  const double N_A = 6.02214076e23;     // Wikipedia, Avogadro's Constant
   // dipolar interaction constant from Brueschweiler & Case, 1994 (eqs 33-35)
   const double xi = N_A * gamma * gamma * hbar * mu0 / (4.0 * PI);
   // this is equivalent to 0.5 * zeta from eqn 33 in B&C.
@@ -229,25 +235,34 @@ int main(int argc, char *argv[]) {
   MatrixXd sample = MatrixXd::Zero(N, N);
 
   // Determine which functionality the code should apply
-  if (topts->corr){
-    
-  }
-
-  if (topts->spectral_density) {
+  if (topts->corr || topts->spectral_density) {
     // get the framerate into Hertz
     const double framerate = topts->f * ghz2Hz;
     const double bin_width = topts->bin_width * khz2Hz;
     // compute fragments to Fourier Transform
-    const uint frames_per_ft = (uint) framerate / bin_width;
-    const uint framefrac = frames_per_ft / mtopts->frameList().size(); 
-    vector<uint> trajlengths;      
-    for (auto i = 0; i < mtopts->mtraj.size(); i++){
+    const uint frames_per_ft = (uint)framerate / bin_width;
+    const uint offset = (uint) frames_per_ft * topts->overlap;
+    vector<uint> trajlengths;
+    
+    vector<vector<uint>> resample_FT_indices;
+    auto previt = mtopts->frameList().begin();
+    for (auto i = 0; i < mtopts->mtraj.size(); i++) {
       trajlengths.push_back(mtopts->mtraj.nframes(i));
+      if (frames_per_ft < trajlengths.back()) {
+        // taking advantage of truncation toward zero behavior of integer division
+        uint n_subsamples = trajlengths.back() / (frames_per_ft - offset);
+        while (trajlengths.back() != frames_per_ft * n_subsamples * offset )
+        // figure out how much to increase the offset by to make this a round number
+
+      } else{
+        vector<uint> trajframes(previt, previt + trajlengths.back());
+        resample_FT_indices.emplace_back(trajframes);
+      } 
     }
-    if (frames_per_ft < mtopts->frameList().size()){
-      
-    }
-    // Magic circle oscillator precomputation:
+    
+
+    if (topts->spectral_density) {
+        // Magic circle oscillator precomputation:
     // Magic Circle oscillator for trackin samples like the above
     DFTMagicCircle dft(sample, frqs, framerate, mtopts->frameList().size());
     // Now iterate over all frames in the skipped & strided trajectory
@@ -264,7 +279,10 @@ int main(int argc, char *argv[]) {
     // compute spectral densities from DFT here.
     J = dft.spectral_density();
 
-  } else {           // use r^6 approx/averaging
+  }
+  }
+
+   else {           // use r^6 approx/averaging
     double d2 = 0.0; // stores output of squared distance
     for (auto f : mtopts->frameList()) {
       traj->readFrame(f);
