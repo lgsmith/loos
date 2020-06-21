@@ -26,6 +26,7 @@
 
 #include "DFTMagicCircle.hpp"
 #include "loos.hpp"
+#include "dft_helpers.hpp"
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <Eigen/Eigenvalues>
@@ -72,7 +73,9 @@ public:
       ("isa,I", po::bool_switch(&isa)->default_value(false),
        "If thrown, report relative NOEs without any spin-relaxation.")
       ("spectral-density,J", po::bool_switch(&spectral_density)->default_value(false),
-       "If thrown, use spectral densities for relaxation matrix elts.")
+       "If thrown, use spectral densities only at 0, w, and 2w for relaxation matrix elts.")
+      ("correlation,C", po::bool_switch(corr)->default_value(false),
+       "if thrown, compute full DFT of result; Output both spectral-density NOEs and correlation functions.")
       ("initial-magnetization,M", po::value<double>(&M)->default_value(1),
        "Initial magnetization (M_0) at t=0.");
       
@@ -102,7 +105,7 @@ public:
     }
     return true;
   }
-  bool isa, spectral_density;
+  bool isa, spectral_density, corr;
   string ts;
   string buildup_range;
   vector<double> buildups;
@@ -225,13 +228,22 @@ int main(int argc, char *argv[]) {
   // matrix to hold return values of calculation in forloop
   MatrixXd sample = MatrixXd::Zero(N, N);
 
+  // Determine which functionality the code should apply
+  if (topts->corr){
+    
+  }
+
   if (topts->spectral_density) {
     // get the framerate into Hertz
     const double framerate = topts->f * ghz2Hz;
     const double bin_width = topts->bin_width * khz2Hz;
     // compute fragments to Fourier Transform
     const uint frames_per_ft = (uint) framerate / bin_width;
-    const uint framefrac = frames_per_ft / mtopts->frameList().size();       
+    const uint framefrac = frames_per_ft / mtopts->frameList().size(); 
+    vector<uint> trajlengths;      
+    for (auto i = 0; i < mtopts->mtraj.size(); i++){
+      trajlengths.push_back(mtopts->mtraj.nframes(i));
+    }
     if (frames_per_ft < mtopts->frameList().size()){
       
     }
