@@ -66,8 +66,6 @@ public:
        "set a rigid-body correlation time, in ns.")
       ("buildup-curve-range", po::value<std::string>(&buildup_range), 
        "Which mixing times to write out for plotting (matlab style range, overrides -m).")
-      ("overlap", po::value<double>(&overlap)->default_value(0.5),
-       "Fraction of overlap between DFT segments.")
       ("bin-width", po::value<double>(&bin_width)->default_value(10.0),
        "Width for DFT bins, in kHz.")
       ("isa,I", po::bool_switch(&isa)->default_value(false),
@@ -86,9 +84,9 @@ public:
   string print() const {
     ostringstream oss;
     oss << boost::format("ts=%s,w=%d,B=%d,f=%d,t=%d,m=%d,M=%d,buildup_range=%s,"
-                         "spectral_density=%b,isa=%b,overlap=%d,corr=%b") %
+                         "spectral_density=%b,isa=%b,corr=%b") %
                ts % gamma % B % f % threads % m % M % buildup_range %
-               spectral_density % isa % overlap % corr;
+               spectral_density % isa % corr;
     return (oss.str());
   }
   // this function post-processes conditional input for the tool options
@@ -240,53 +238,60 @@ int main(int argc, char *argv[]) {
     const double framerate = topts->f * ghz2Hz;
     const double bin_width = topts->bin_width * khz2Hz;
     // compute fragments to Fourier Transform
-    uint frames_per_ft = (uint)framerate / bin_width;
+    // frames_per_ft is halved to reflect causal zero padding done later.
+    uint frames_per_ft = (uint)framerate / (2 * bin_width);
     vector<uint> trajlengths;
-    
+
     vector<vector<uint>> resample_FT_indices;
     auto previt = mtopts->frameList().begin();
     for (auto i = 0; i < mtopts->mtraj.size(); i++) {
       trajlengths.push_back(mtopts->mtraj.nframes(i));
       if (frames_per_ft < trajlengths.back()) {
-        // taking advantage of truncation toward zero behavior of integer division
+        // taking advantage of truncation toward zero behavior of integer
+        // division
         uint n_subsamples = trajlengths.back() / (frames_per_ft);
         uint bartlett_length = n_subsamples * frames_per_ft;
         uint remainder = trajlengths.back() - bartlett_length;
-          // increase 
-        frames_per_ft += remainder / n_subsamples;
-
-        while (trajlengths.back() != frames_per_ft * n_subsamples )
-        // figure out how much to increase the offset by to make this a round number
-
-      } else{
+        for (auto j = 0; j < n_subsamples; j++) {
+          // enforce a one frame overlap for each of the first 'remainder' windows.
+          if (j != 0 && remainder > 0){
+            remainder--;
+            previt--;
+          }
+          vector<uint> subframes(previt, previt + j * frames_per_ft);
+          resample_FT_indices.emplace_back(subframes);
+          previt += j * frames_per_ft;
+        }
+      } else {
+        cerr << "warning: trajectory " << i
+             << " has fewer frames than are needed for desired bin-width.\n";
         vector<uint> trajframes(previt, previt + trajlengths.back());
         resample_FT_indices.emplace_back(trajframes);
-      } 
+        previt += trajlengths.back();
+      }
     }
-    
 
     if (topts->spectral_density) {
-        // Magic circle oscillator precomputation:
-    // Magic Circle oscillator for trackin samples like the above
-    DFTMagicCircle dft(sample, frqs, framerate, mtopts->frameList().size());
-    // Now iterate over all frames in the skipped & strided trajectory
-    for (auto f : mtopts->frameList()) {
-      traj->readFrame(f);
-      traj->updateGroupCoords(nuclei);
-      // compute second order index 0 spherical harmonics of all ij pairs.
-      for (auto i = 0; i < N; i++)
-        for (auto j = 0; j < i; j++)
-          sample(i, j) = Y_2_0(nuclei[i]->coords(), nuclei[j]->coords());
+      // Magic circle oscillator precomputation:
+      // Magic Circle oscillator for trackin samples like the above
+      DFTMagicCircle dft(sample, frqs, framerate, mtopts->frameList().size());
+      // Now iterate over all frames in the skipped & strided trajectory
+      for (auto f : mtopts->frameList()) {
+        traj->readFrame(f);
+        traj->updateGroupCoords(nuclei);
+        // compute second order index 0 spherical harmonics of all ij pairs.
+        for (auto i = 0; i < N; i++)
+          for (auto j = 0; j < i; j++)
+            sample(i, j) = Y_2_0(nuclei[i]->coords(), nuclei[j]->coords());
 
-      dft(sample);
+        dft(sample);
+      }
+      // compute spectral densities from DFT here.
+      J = dft.spectral_density();
     }
-    // compute spectral densities from DFT here.
-    J = dft.spectral_density();
-
-  }
   }
 
-   else {           // use r^6 approx/averaging
+  else {             // use r^6 approx/averaging
     double d2 = 0.0; // stores output of squared distance
     for (auto f : mtopts->frameList()) {
       traj->readFrame(f);
