@@ -240,8 +240,7 @@ int main(int argc, char *argv[]) {
     const double framerate = topts->f * ghz2Hz;
     const double bin_width = topts->bin_width * khz2Hz;
     // compute fragments to Fourier Transform
-    const uint frames_per_ft = (uint)framerate / bin_width;
-    const uint offset = (uint) frames_per_ft * topts->overlap;
+    uint frames_per_ft = (uint)framerate / bin_width;
     vector<uint> trajlengths;
     
     vector<vector<uint>> resample_FT_indices;
@@ -250,8 +249,13 @@ int main(int argc, char *argv[]) {
       trajlengths.push_back(mtopts->mtraj.nframes(i));
       if (frames_per_ft < trajlengths.back()) {
         // taking advantage of truncation toward zero behavior of integer division
-        uint n_subsamples = trajlengths.back() / (frames_per_ft - offset);
-        while (trajlengths.back() != frames_per_ft * n_subsamples * offset )
+        uint n_subsamples = trajlengths.back() / (frames_per_ft);
+        uint bartlett_length = n_subsamples * frames_per_ft;
+        uint remainder = trajlengths.back() - bartlett_length;
+          // increase 
+        frames_per_ft += remainder / n_subsamples;
+
+        while (trajlengths.back() != frames_per_ft * n_subsamples )
         // figure out how much to increase the offset by to make this a round number
 
       } else{
