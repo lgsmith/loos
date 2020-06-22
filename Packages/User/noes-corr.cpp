@@ -272,22 +272,38 @@ int main(int argc, char *argv[]) {
     }
 
     if (topts->spectral_density) {
-      // Magic circle oscillator precomputation:
-      // Magic Circle oscillator for trackin samples like the above
-      DFTMagicCircle dft(sample, frqs, framerate, mtopts->frameList().size());
-      // Now iterate over all frames in the skipped & strided trajectory
-      for (auto f : mtopts->frameList()) {
-        traj->readFrame(f);
-        traj->updateGroupCoords(nuclei);
-        // compute second order index 0 spherical harmonics of all ij pairs.
-        for (auto i = 0; i < N; i++)
-          for (auto j = 0; j < i; j++)
-            sample(i, j) = Y_2_0(nuclei[i]->coords(), nuclei[j]->coords());
-
-        dft(sample);
+      vector<MatrixXd> mean_J;
+      // initialize the mean J list
+      for (auto i = 0; i < frqs.size(); i++){
+        MatrixXd initialized_frq = MatrixXd::Zero(N, N);
+        mean_J.emplace_back(move(initialized_frq));
       }
-      // compute spectral densities from DFT here.
-      J = dft.spectral_density();
+      for (const auto subFTInds : resample_FT_indices){
+        // Magic circle oscillator precomputation:
+        // Magic Circle oscillator for trackin samples like the above
+        DFTMagicCircle dft(sample, frqs, framerate, subFTInds.size());
+        // Now iterate over all frames in the skipped & strided trajectory
+        for (auto f : subFTInds) {
+          traj->readFrame(f);
+          traj->updateGroupCoords(nuclei);
+          // compute second order index 0 spherical harmonics of all ij pairs.
+          for (auto i = 0; i < N; i++)
+            for (auto j = 0; j < i; j++)
+              sample(i, j) = Y_2_0(nuclei[i]->coords(), nuclei[j]->coords());
+
+          dft(sample);
+        }
+        // compute spectral densities from DFT here.
+        J = dft.spectral_density();
+        for (auto i = 0; i < frqs.size(); i++){
+          mean_J[i] += J[i];
+        }
+
+   
+      }
+      for (auto i = 0; i < frqs.size(); i++)
+        mean_J[i] /= resample_FT_indices.size();
+      
     }
   }
 
