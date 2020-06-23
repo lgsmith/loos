@@ -25,16 +25,14 @@
 */
 
 #include "DFTMagicCircle.hpp"
-#include "dft_helpers.hpp"
 #include "loos.hpp"
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <Eigen/Eigenvalues>
-#include <Eigen/LU>
+#include <unsupported/Eigen/CXX11/Tensor>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <string>
-#include <unsupported/Eigen/CXX11/Tensor>
 #include <vector>
 #define EIGEN_USE_THREADS
 
@@ -117,9 +115,41 @@ public:
   int threads;
 };
 // @endcond
+
 // function to write evolution of TS as JSON
 pt::ptree make_NOE_json(vector<MatrixXd> &intensities, vector<double> &times,
                         AtomicGroup &nuclei) {
+  pt::ptree root; // we'll build this up, then return it.
+  pt::ptree times_node;
+  pt::ptree noes_node;
+  for (const auto &time : times) {
+    pt::ptree time_node;
+    time_node.put("", time);
+    times_node.push_back(make_pair("", time_node));
+  }
+  root.add_child("mixing times", times_node);
+  for (size_t i = 0; i < nuclei.size(); i++) {
+    pAtom ith = nuclei[i];
+    for (size_t j = i + 1; j < nuclei.size(); j++) {
+      pAtom jth = nuclei[j];
+      ostringstream tag;
+      tag << ith->resname() << ith->resid() << ith->name() << ":"
+          << jth->resname() << jth->resid() << jth->name();
+      pt::ptree noe_node;
+      for (uint t = 0; t < times.size(); t++) {
+        pt::ptree vol_node;
+        vol_node.put("", intensities[t](i, j));
+        noe_node.push_back(make_pair("", vol_node));
+      }
+      noes_node.add_child(tag.str(), noe_node);
+    }
+  }
+  root.add_child("noes", noes_node);
+  return root;
+}
+// overload for writing spectra and autocorrelations.
+pt::ptree make_NOE_json(vector<MatrixXd> &intensities, vector<double> &times,
+                        AtomicGroup &nuclei, Tensor<double, 3> &spectra, Tensor<double, 3> &corrs) {
   pt::ptree root; // we'll build this up, then return it.
   pt::ptree times_node;
   pt::ptree noes_node;
@@ -271,7 +301,7 @@ int main(int argc, char *argv[]) {
     // Create a vector of vector of frame indices for each FT.
     vector<vector<uint>> resample_FT_indices;
     auto previt = mtopts->frameList().begin();
-    for (auto i = 0; i < mtopts->mtraj.size(); i++) {
+    for (uint i = 0; i < mtopts->mtraj.size(); i++) {
       trajlengths.push_back(mtopts->mtraj.nframes(i));
       if (frames_per_ft < trajlengths.back()) {
         // taking advantage of truncation toward zero behavior of integer
@@ -279,7 +309,7 @@ int main(int argc, char *argv[]) {
         uint n_subsamples = trajlengths.back() / (frames_per_ft);
         uint bartlett_length = n_subsamples * frames_per_ft;
         uint remainder = trajlengths.back() - bartlett_length;
-        for (auto j = 0; j < n_subsamples; j++) {
+        for (uint j = 0; j < n_subsamples; j++) {
           // enforce a one frame overlap for each of the first 'remainder'
           // windows.
           if (j != 0 && remainder > 0) {
@@ -298,10 +328,10 @@ int main(int argc, char *argv[]) {
         previt += trajlengths.back();
       }
     }
-
+    // Execute this if we only need spectral densities
     if (topts->spectral_density) {
       // initialize the mean J list
-      for (auto i = 0; i < frqs.size(); i++) {
+      for (uint i = 0; i < frqs.size(); i++) {
         MatrixXd initialized_frq = MatrixXd::Zero(N, N);
         J.emplace_back(move(initialized_frq));
       }
@@ -320,18 +350,18 @@ int main(int argc, char *argv[]) {
           // feed this sample into the DFT object
           dft(sample);
         }
-        // now 'finish' th
-        uint zeros_count = subFTInds.size();
-        while (zeros_count > 0) {
-          dft(MatrixXd::Zero(N, N));
-        }
-        // compute spectral densities from DFT here.
-        J = dft.spectral_density();
-        for (auto i = 0; i < frqs.size(); i++) {
-          J[i] += J[i];
-        }
+        // this is the zero pad section. Possibly not needed.
+        // uint zeros_count = subFTInds.size();
+        // while (zeros_count > 0) {
+        //   dft(MatrixXd::Zero(N, N));
+        // }
+        // // compute spectral densities from DFT here.
+        // J = dft.spectral_density();
+        // for (auto i = 0; i < frqs.size(); i++) {
+        //   J[i] += J[i];
+        // }
       }
-      for (auto i = 0; i < frqs.size(); i++)
+      for (uint i = 0; i < frqs.size(); i++)
         J[i] /= (double)resample_FT_indices.size();
     } else {
       // create a tensor to store the FT results in
@@ -343,7 +373,7 @@ int main(int argc, char *argv[]) {
         signal.setZero();
         // Loop over the part of the multitraj corresponding to this
         // sub-transform
-        for (auto f = 0; f < subFTInds.size(); f++) {
+        for (uint f = 0; f < subFTInds.size(); f++) {
           traj->readFrame(subFTInds[f]);
           traj->updateGroupCoords(nuclei);
           // Load the tensor (3D array) with sph. harm. for this frame.
