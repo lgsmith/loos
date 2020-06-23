@@ -29,10 +29,11 @@
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <Eigen/Eigenvalues>
-#include <unsupported/Eigen/CXX11/Tensor>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
+#include <memory>
 #include <string>
+#include <unsupported/Eigen/CXX11/Tensor>
 #include <vector>
 #define EIGEN_USE_THREADS
 
@@ -149,33 +150,74 @@ pt::ptree make_NOE_json(vector<MatrixXd> &intensities, vector<double> &times,
 }
 // overload for writing spectra and autocorrelations.
 pt::ptree make_NOE_json(vector<MatrixXd> &intensities, vector<double> &times,
-                        AtomicGroup &nuclei, Tensor<double, 3> &spectra, Tensor<double, 3> &corrs) {
+                        AtomicGroup &nuclei, Tensor<double, 3> &spectra,
+                        Tensor<double, 3> &corrs, vector<double> &frq_bins,
+                        vector<double> &lag_bins) {
   pt::ptree root; // we'll build this up, then return it.
   pt::ptree times_node;
   pt::ptree noes_node;
+  pt::ptree spectra_node;
+  pt::ptree correlations_node;
+  pt::ptree frqbins_node;
+  pt::ptree lagbins_node;
+  // build JSON array of mixing times
   for (const auto &time : times) {
     pt::ptree time_node;
     time_node.put("", time);
     times_node.push_back(make_pair("", time_node));
   }
   root.add_child("mixing times", times_node);
+  // build JSON array of frequency bins for Spectral Densities
+  for (const auto &frq : frq_bins) {
+    pt::ptree frq_node;
+    frq_node.put("", frq);
+    frqbins_node.push_back(make_pair("", frq_node));
+  }
+  root.add_child("frequencies", frqbins_node);
+  // build JSON arry of lag-time bins for autocorrelation
+  for (const auto &lag : lag_bins) {
+    pt::ptree lag_node;
+    lag_node.put("", lag);
+    lagbins_node.push_back(move(make_pair("", lag_node)));
+  }
+  root.add_child("lags", lagbins_node);
+  // record data for each atom, sorted by atom tag
   for (size_t i = 0; i < nuclei.size(); i++) {
     pAtom ith = nuclei[i];
-    for (size_t j = i + 1; j < nuclei.size(); j++) {
+    for (size_t j = 0; j < i; j++) {
       pAtom jth = nuclei[j];
       ostringstream tag;
-      tag << ith->resname() << ith->resid() << ith->name() << ":"
-          << jth->resname() << jth->resid() << jth->name();
+      tag << jth->resname() << jth->resid() << jth->name() << ":"
+          << ith->resname() << ith->resid() << ith->name();
+      // write the spectrum and correlations to arrays tagged by the tag
+      pt::ptree spectrum_node;
+      pt::ptree corr_node;
+      // loop over first index of tensor--this should be the bin index the
+      // (i)FFT
+      for (uint k = 0; k < spectra.dimension(0); k++) {
+        pt::ptree spectrum_point;
+        spectrum_point.put("", spectra(k, j, i));
+        spectrum_node.push_back(make_pair("", spectrum_point));
+        pt::ptree corr_point;
+        corr_point.put("", corrs(k, j, i));
+        corr_node.push_back(make_pair("", corr_point));
+      }
+      spectra_node.add_child(tag.str(), spectrum_node);
+      correlations_node.add_child(tag.str(), corr_node);
+      // writhe the correlations per lag to an array with above tag
+      // loop over the first index of the tensor again
       pt::ptree noe_node;
       for (uint t = 0; t < times.size(); t++) {
         pt::ptree vol_node;
-        vol_node.put("", intensities[t](i, j));
+        vol_node.put("", intensities[t](j, i));
         noe_node.push_back(make_pair("", vol_node));
       }
       noes_node.add_child(tag.str(), noe_node);
     }
   }
   root.add_child("noes", noes_node);
+  root.add_child("spectra", spectra_node);
+  root.add_child("correlations", correlations_node);
   return root;
 }
 // get next power of two, from:
@@ -273,12 +315,18 @@ int main(int argc, char *argv[]) {
   vector<MatrixXd> J;
   // matrix to hold return values of calculation in forloop
   MatrixXd sample = MatrixXd::Zero(N, N);
-
+  // make unique pointers to point to data that may be created, depending on the
+  // following
+  unique_ptr<Tensor<double, 3>> p_mean_spectra;
+  unique_ptr<Tensor<double, 3>> p_corrs;
+  unique_ptr<vector<double>> p_frqbins;
+  unique_ptr<vector<double>> p_lagbins;
   // Determine which functionality the code should apply
   if (topts->corr || topts->spectral_density) {
     // get the framerate into Hertz
-    const double framerate = topts->f * ghz2Hz;
+    const double fs = topts->f * ghz2Hz;
     const double bin_width = topts->bin_width * khz2Hz;
+    double actual_binwidth; // store bin width after padding up to nextpwr2.
     // compute fragments to Fourier Transform
     // frames_per_ft is halved to reflect causal zero padding done later.
     uint frames_per_ft, points;
@@ -287,11 +335,12 @@ int main(int argc, char *argv[]) {
     // zeros required for causal padding.
     if (topts->corr) {
       // number of frames that would be correct for causal zero padding (2fold)
-      frames_per_ft = (uint)framerate / (2 * bin_width);
+      frames_per_ft = (uint)fs / (2 * bin_width);
       // now figure out how many points are needed for an efficient fft.
       points = nextPowerOf2(frames_per_ft);
+      actual_binwidth = fs / points;
     } else {
-      frames_per_ft = (uint)framerate / bin_width;
+      frames_per_ft = (uint)fs / bin_width;
       points = frames_per_ft; // Oscillator algorithm doesn't need zero pad
                               // since bin is centered and since rest ignored.
     }
@@ -304,14 +353,12 @@ int main(int argc, char *argv[]) {
     for (uint i = 0; i < mtopts->mtraj.size(); i++) {
       trajlengths.push_back(mtopts->mtraj.nframes(i));
       if (frames_per_ft < trajlengths.back()) {
-        // taking advantage of truncation toward zero behavior of integer
-        // division
+        // Integer division truncates toward zero
         uint n_subsamples = trajlengths.back() / (frames_per_ft);
         uint bartlett_length = n_subsamples * frames_per_ft;
         uint remainder = trajlengths.back() - bartlett_length;
         for (uint j = 0; j < n_subsamples; j++) {
-          // enforce a one frame overlap for each of the first 'remainder'
-          // windows.
+          // One frame overlap for each of the first 'remainder' windows.
           if (j != 0 && remainder > 0) {
             remainder--;
             previt--;
@@ -328,7 +375,7 @@ int main(int argc, char *argv[]) {
         previt += trajlengths.back();
       }
     }
-    // Execute this if we only need spectral densities
+    // If we only need the three freqs from the spectral density for NOEs.
     if (topts->spectral_density) {
       // initialize the mean J list
       for (uint i = 0; i < frqs.size(); i++) {
@@ -338,7 +385,7 @@ int main(int argc, char *argv[]) {
       for (const auto subFTInds : resample_FT_indices) {
         // Magic circle oscillator precomputation:
         // Magic Circle oscillator for trackin samples like the above
-        DFTMagicCircle dft(sample, frqs, framerate, subFTInds.size());
+        DFTMagicCircle dft(sample, frqs, fs, subFTInds.size());
         // Now iterate over all frames in the skipped & strided trajectory
         for (const auto f : subFTInds) {
           traj->readFrame(f);
@@ -363,9 +410,13 @@ int main(int argc, char *argv[]) {
       }
       for (uint i = 0; i < frqs.size(); i++)
         J[i] /= (double)resample_FT_indices.size();
-    } else {
+    } else { // Else we need to compute the autocorrelation, which means two
+             // full FTs.
       // create a tensor to store the FT results in
       Tensor<double, 3> mean_periodogram(points, N, N);
+      mean_periodogram.setZero();
+      // have the outer-scope unique pointer point at it, for saving data l8r
+      p_mean_spectra.reset(&mean_periodogram);
       // create an array to specify which dimension to FT
       Eigen::array<int, 1> dim = {(0)};
       for (const auto subFTInds : resample_FT_indices) {
@@ -384,13 +435,13 @@ int main(int argc, char *argv[]) {
           }
         }
         // accumulate periodograms (spectral densities) into the average
-        auto fft_result = signal.template fft<RealPart, FFT_FORWARD>(dim);
-        mean_periodogram += fft_result * fft_result;
+        mean_periodogram +=
+            (signal.template fft<RealPart, FFT_FORWARD>(dim)).abs().square();
       }
       // figure out which bins are needed to fill out J, above.
       for (const auto w : frqs) {
         // casting to unsigned int truncates, instead of rounding
-        uint k = static_cast<unsigned int>(w / (2 * PI * framerate));
+        uint k = static_cast<unsigned int>(w / (2 * PI * fs));
         MatrixXd amplitude = MatrixXd::Zero(N, N);
         // cool kids would do this with a map to the chip...
         for (auto i = 0; i < N; i++)
@@ -402,10 +453,19 @@ int main(int argc, char *argv[]) {
       // finish calculating the discrete correlation
       Tensor<double, 3> correlation =
           mean_periodogram.template fft<RealPart, FFT_REVERSE>(dim);
+      // build the frq and lag bin vectors for plotting
+      vector<double> lag_bins;
+      vector<double> frq_bins;
       for (uint f = 0; f < points; f++) {
         correlation.chip(f, 0) =
             correlation.chip(f, 0) * 1.0 / static_cast<double>(points - f);
+        // lags should be distributed as reciprocal of bin-width
+        lag_bins.push_back(f / actual_binwidth);
+        // lower bin edges should be a function of bin-width
+        frq_bins.push_back(f * actual_binwidth);
       }
+      // point p_corrs at correlation, for writing data later.
+      p_corrs.reset(&correlation);
     }
   } else {           // use r^6 approx/averaging
     double d2 = 0.0; // stores output of squared distance
@@ -436,7 +496,6 @@ int main(int argc, char *argv[]) {
   cout << "this is R:\n" << R << "\n";
   vector<MatrixXd> intensities;
   pt::ptree jsontree;
-  jsontree.put("invocation", header);
   if (topts->isa) {
     vector<double> mix{topts->m * ms2s};
     intensities.push_back(move(R * mix[0]));
@@ -463,7 +522,12 @@ int main(int argc, char *argv[]) {
                                 .asDiagonal() *
                             invEvecs);
     }
-    jsontree = make_NOE_json(intensities, topts->buildups, nuclei);
+    if (topts->corr)
+      jsontree =
+          make_NOE_json(intensities, topts->buildups, nuclei, *p_mean_spectra,
+                        *p_corrs, *p_frqbins, *p_lagbins);
+    else
+      jsontree = make_NOE_json(intensities, topts->buildups, nuclei);
     ComputationInfo es_info = es.info();
     string comp_info_tag = "eigensolver";
     if (es_info == Success)
@@ -477,5 +541,6 @@ int main(int argc, char *argv[]) {
       jsontree.put(comp_info_tag,
                    "Eigendecomposition was given invalid input.");
   }
+  jsontree.put("invocation", header);
   pt::write_json(cout, jsontree);
 }
