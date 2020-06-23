@@ -72,7 +72,7 @@ public:
        "If thrown, report relative NOEs without any spin-relaxation.")
       ("spectral-density,J", po::bool_switch(&spectral_density)->default_value(false),
        "If thrown, use spectral densities only at 0, w, and 2w for relaxation matrix elts.")
-      ("correlation,C", po::bool_switch(corr)->default_value(false),
+      ("correlation,C", po::bool_switch(&corr)->default_value(false),
        "if thrown, compute full DFT of result; Output both spectral-density NOEs and correlation functions.")
       ("initial-magnetization,M", po::value<double>(&M)->default_value(1),
        "Initial magnetization (M_0) at t=0.");
@@ -300,11 +300,10 @@ int main(int argc, char *argv[]) {
     }
 
     if (topts->spectral_density) {
-      vector<MatrixXd> mean_J;
       // initialize the mean J list
       for (auto i = 0; i < frqs.size(); i++) {
         MatrixXd initialized_frq = MatrixXd::Zero(N, N);
-        mean_J.emplace_back(move(initialized_frq));
+        J.emplace_back(move(initialized_frq));
       }
       for (const auto subFTInds : resample_FT_indices) {
         // Magic circle oscillator precomputation:
@@ -329,11 +328,11 @@ int main(int argc, char *argv[]) {
         // compute spectral densities from DFT here.
         J = dft.spectral_density();
         for (auto i = 0; i < frqs.size(); i++) {
-          mean_J[i] += J[i];
+          J[i] += J[i];
         }
       }
       for (auto i = 0; i < frqs.size(); i++)
-        mean_J[i] /= (double) resample_FT_indices.size();
+        J[i] /= (double)resample_FT_indices.size();
     } else {
       // create a tensor to store the FT results in
       Tensor<double, 3> mean_periodogram(points, N, N);
@@ -358,9 +357,24 @@ int main(int argc, char *argv[]) {
         auto fft_result = signal.template fft<RealPart, FFT_FORWARD>(dim);
         mean_periodogram += fft_result * fft_result;
       }
-      double correction = 0;
-      for (auto f = 0; f < points; f++) {
-        mean_periodogram.chip(f, 0) *= 1.0 / (points - f);
+      // figure out which bins are needed to fill out J, above.
+      for (const auto w : frqs) {
+        // casting to unsigned int truncates, instead of rounding
+        uint k = static_cast<unsigned int>(w / (2 * PI * framerate));
+        MatrixXd amplitude = MatrixXd::Zero(N, N);
+        // cool kids would do this with a map to the chip...
+        for (auto i = 0; i < N; i++)
+          for (auto j = 0; j < N; j++)
+            amplitude(j, i) = mean_periodogram(k, j, i);
+        J.emplace_back(move(amplitude));
+      }
+
+      // finish calculating the discrete correlation
+      Tensor<double, 3> correlation =
+          mean_periodogram.template fft<RealPart, FFT_REVERSE>(dim);
+      for (uint f = 0; f < points; f++) {
+        correlation.chip(f, 0) =
+            correlation.chip(f, 0) * 1.0 / static_cast<double>(points - f);
       }
     }
   } else {           // use r^6 approx/averaging
