@@ -148,6 +148,18 @@ pt::ptree make_NOE_json(vector<MatrixXd> &intensities, vector<double> &times,
   root.add_child("noes", noes_node);
   return root;
 }
+// get next power of two, from:
+// https://www.geeksforgeeks.org/smallest-power-of-2-greater-than-or-equal-to-n/
+const unsigned int nextPowerOf2(const unsigned int n) {
+  unsigned int p = 1;
+  if (n && !(n & (n - 1)))
+    return n;
+
+  while (p < n)
+    p <<= 1;
+
+  return p;
+}
 
 // rigid tumbling spectral density, assumes uniform correlation times
 inline vector<MatrixXd> rigid_spectral_density(MatrixXd &dist6,
@@ -239,9 +251,24 @@ int main(int argc, char *argv[]) {
     const double bin_width = topts->bin_width * khz2Hz;
     // compute fragments to Fourier Transform
     // frames_per_ft is halved to reflect causal zero padding done later.
-    uint frames_per_ft = (uint)framerate / (2 * bin_width);
+    uint frames_per_ft, points;
+    // If we need to zero pad for FFT, frames_per_ft needs to be halved for
+    // desired binwidth since the following calculation will not include the
+    // zeros required for causal padding.
+    if (topts->corr) {
+      // number of frames that would be correct for causal zero padding (2fold)
+      frames_per_ft = (uint)framerate / (2 * bin_width);
+      // now figure out how many points are needed for an efficient fft.
+      points = nextPowerOf2(frames_per_ft);
+    } else {
+      frames_per_ft = (uint)framerate / bin_width;
+      points = frames_per_ft; // Oscillator algorithm doesn't need zero pad
+                              // since bin is centered and since rest ignored.
+    }
+    // Loop over multitraj to obtain individual sub-trajectory lengths;
+    // the DFTs from these should be averaged separately
     vector<uint> trajlengths;
-
+    // Create a vector of vector of frame indices for each FT.
     vector<vector<uint>> resample_FT_indices;
     auto previt = mtopts->frameList().begin();
     for (auto i = 0; i < mtopts->mtraj.size(); i++) {
@@ -253,8 +280,9 @@ int main(int argc, char *argv[]) {
         uint bartlett_length = n_subsamples * frames_per_ft;
         uint remainder = trajlengths.back() - bartlett_length;
         for (auto j = 0; j < n_subsamples; j++) {
-          // enforce a one frame overlap for each of the first 'remainder' windows.
-          if (j != 0 && remainder > 0){
+          // enforce a one frame overlap for each of the first 'remainder'
+          // windows.
+          if (j != 0 && remainder > 0) {
             remainder--;
             previt--;
           }
@@ -274,40 +302,68 @@ int main(int argc, char *argv[]) {
     if (topts->spectral_density) {
       vector<MatrixXd> mean_J;
       // initialize the mean J list
-      for (auto i = 0; i < frqs.size(); i++){
+      for (auto i = 0; i < frqs.size(); i++) {
         MatrixXd initialized_frq = MatrixXd::Zero(N, N);
         mean_J.emplace_back(move(initialized_frq));
       }
-      for (const auto subFTInds : resample_FT_indices){
+      for (const auto subFTInds : resample_FT_indices) {
         // Magic circle oscillator precomputation:
         // Magic Circle oscillator for trackin samples like the above
         DFTMagicCircle dft(sample, frqs, framerate, subFTInds.size());
         // Now iterate over all frames in the skipped & strided trajectory
-        for (auto f : subFTInds) {
+        for (const auto f : subFTInds) {
           traj->readFrame(f);
           traj->updateGroupCoords(nuclei);
           // compute second order index 0 spherical harmonics of all ij pairs.
           for (auto i = 0; i < N; i++)
             for (auto j = 0; j < i; j++)
               sample(i, j) = Y_2_0(nuclei[i]->coords(), nuclei[j]->coords());
-
+          // feed this sample into the DFT object
           dft(sample);
+        }
+        // now 'finish' th
+        uint zeros_count = subFTInds.size();
+        while (zeros_count > 0) {
+          dft(MatrixXd::Zero(N, N));
         }
         // compute spectral densities from DFT here.
         J = dft.spectral_density();
-        for (auto i = 0; i < frqs.size(); i++){
+        for (auto i = 0; i < frqs.size(); i++) {
           mean_J[i] += J[i];
         }
-
-   
       }
       for (auto i = 0; i < frqs.size(); i++)
-        mean_J[i] /= resample_FT_indices.size();
-      
+        mean_J[i] /= (double) resample_FT_indices.size();
+    } else {
+      // create a tensor to store the FT results in
+      Tensor<double, 3> mean_periodogram(points, N, N);
+      // create an array to specify which dimension to FT
+      Eigen::array<int, 1> dim = {(0)};
+      for (const auto subFTInds : resample_FT_indices) {
+        Tensor<double, 3> signal(points, N, N);
+        signal.setZero();
+        // Loop over the part of the multitraj corresponding to this
+        // sub-transform
+        for (auto f = 0; f < subFTInds.size(); f++) {
+          traj->readFrame(subFTInds[f]);
+          traj->updateGroupCoords(nuclei);
+          // Load the tensor (3D array) with sph. harm. for this frame.
+          for (auto i = 0; i < N; i++) {
+            for (auto j = 0; j < i; j++) {
+              signal(f, j, i) = Y_2_0(nuclei[j]->coords(), nuclei[i]->coords());
+            }
+          }
+        }
+        // accumulate periodograms (spectral densities) into the average
+        auto fft_result = signal.template fft<RealPart, FFT_FORWARD>(dim);
+        mean_periodogram += fft_result * fft_result;
+      }
+      double correction = 0;
+      for (auto f = 0; f < points; f++) {
+        mean_periodogram.chip(f, 0) *= 1.0 / (points - f);
+      }
     }
-  }
-
-  else {             // use r^6 approx/averaging
+  } else {           // use r^6 approx/averaging
     double d2 = 0.0; // stores output of squared distance
     for (auto f : mtopts->frameList()) {
       traj->readFrame(f);
