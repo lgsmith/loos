@@ -327,8 +327,7 @@ int main(int argc, char *argv[]) {
     const double fs = topts->f * ghz2Hz;
     const double bin_width = topts->bin_width * khz2Hz;
     double actual_binwidth; // store bin width after padding up to nextpwr2.
-    // compute fragments to Fourier Transform
-    // frames_per_ft is halved to reflect causal zero padding done later.
+    // define these so they'll be accessible in lower scopes
     uint frames_per_ft, points;
     // If we need to zero pad for FFT, frames_per_ft needs to be halved for
     // desired binwidth since the following calculation will not include the
