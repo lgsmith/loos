@@ -402,14 +402,13 @@ int main(int argc, char *argv[]) {
         // while (zeros_count > 0) {
         //   dft(MatrixXd::Zero(N, N));
         // }
-        // // compute spectral densities from DFT here.
-        // J = dft.spectral_density();
-        // for (auto i = 0; i < frqs.size(); i++) {
-        //   J[i] += J[i];
-        // }
+        // compute spectral densities from DFT here.
+        for (uint i = 0; i < frqs.size(); i++) {
+          J[i] += dft.spectral_density()[i];
+        }
       }
       for (uint i = 0; i < frqs.size(); i++)
-        J[i] /= (double)resample_FT_indices.size();
+        J[i] /= static_cast<double>(resample_FT_indices.size());
     } else { // Else we need to compute the autocorrelation, which means two
              // full FTs.
       // create a tensor to store the FT results in

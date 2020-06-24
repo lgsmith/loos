@@ -9,6 +9,7 @@ private:
   std::vector<SampleType> y2; // needs frequencies in Hertz
   std::vector<SampleType> y1;
   std::vector<double> k;
+  double scale;
 
 public:
   // needs frequencies in Hertz
@@ -31,6 +32,8 @@ DFTMagicCircle::DFTMagicCircle(SampleType &empty_sample,
                                const std::vector<double> &frqs,
                                const double sampling_rate,
                                const unsigned int n_samples) {
+  // compute scale-factor now, for use with spectral density later
+  scale = 4.0 / (static_cast<double>(n_samples * n_samples));
   // buildup k vector with sinusoids corresponding to tracked frqs.
   for (const auto f : frqs) {
     // convert to radians per sample over two, take sin, then multiply by 2
@@ -63,8 +66,10 @@ inline std::vector<SampleType>
 DFTMagicCircle::spectral_density(bool recompute) {
   if (J.size() != k.size() || recompute) {
     for (uint i = 0; i < k.size(); i++) {
-      J.push_back(y1[i].cwiseAbs2() + y2[i].cwiseAbs2() -
-                  (k[i] * y1[i].cwiseProduct(y2[i])));
+      J.push_back(
+        scale * (y1[i].cwiseAbs2() + y2[i].cwiseAbs2() -
+                  (k[i] * y1[i].cwiseProduct(y2[i])))
+      );
     }
   }
 
