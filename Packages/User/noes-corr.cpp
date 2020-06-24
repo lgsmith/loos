@@ -354,10 +354,16 @@ int main(int argc, char *argv[]) {
       if (frames_per_ft < trajlengths.back()) {
         // Integer division truncates toward zero
         uint n_subsamples = trajlengths.back() / (frames_per_ft);
-        uint bartlett_length = n_subsamples * frames_per_ft;
-        uint remainder = trajlengths.back() - bartlett_length;
+        uint  total = n_subsamples * frames_per_ft;
+        uint expand_count = (trajlengths.back() - total) / n_subsamples;
+        // add the excess bins back into the framecount so they nearly cover
+        frames_per_ft += expand_count;
+        // compute the remainder after stretching the subsamples
+        total = n_subsamples * frames_per_ft;
+        uint remainder = trajlengths.back() - total;
+        // distribute remainder amongst the subsamples
         for (uint j = 0; j < n_subsamples; j++) {
-          // One frame overlap for each of the first 'remainder' windows.
+          // One frame overlap for each of the first 'remainder' subsamples.
           if (j != 0 && remainder > 0) {
             remainder--;
             previt--;
