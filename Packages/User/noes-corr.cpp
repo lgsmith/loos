@@ -25,6 +25,7 @@
 */
 
 #include "DFTMagicCircle.hpp"
+#include "dft_helpers.hpp"
 #include "loos.hpp"
 #include <Eigen/Core>
 #include <Eigen/Dense>
@@ -67,12 +68,16 @@ public:
        "Which mixing times to write out for plotting (matlab style range, overrides -m).")
       ("bin-width", po::value<double>(&bin_width)->default_value(10.0),
        "Width for DFT bins, in kHz.")
+      ("welch", po::bool_switch(&welch)->default_value(false),
+       "Overlap subFTs such that all frames are used with seleced bin-width. Otherwise, drop data from the beginning of each trajectory file.")
+      ("contiguous", po::bool_switch(&contig)->default_value(false),
+       "If thrown, treat each provided trajectory as part of continuous time-series. Otherwise, treat them as independent trajectories.")
       ("isa,I", po::bool_switch(&isa)->default_value(false),
        "If thrown, report relative NOEs without any spin-relaxation.")
       ("spectral-density,J", po::bool_switch(&spectral_density)->default_value(false),
        "If thrown, use spectral densities only at 0, w, and 2w for relaxation matrix elts.")
       ("correlation,C", po::bool_switch(&corr)->default_value(false),
-       "if thrown, compute full DFT of result; Output both spectral-density NOEs and correlation functions.")
+       "if thrown, compute full DFT of result; Output spectral-density NOEs, spectra, and correlation functions.")
       ("initial-magnetization,M", po::value<double>(&M)->default_value(1),
        "Initial magnetization (M_0) at t=0.");
       
@@ -108,7 +113,7 @@ public:
     }
     return true;
   }
-  bool isa, spectral_density, corr;
+  bool isa, spectral_density, corr, welch, contig;
   string ts;
   string buildup_range;
   vector<double> buildups;
@@ -343,42 +348,20 @@ int main(int argc, char *argv[]) {
       points = frames_per_ft; // Oscillator algorithm doesn't need zero pad
                               // since bin is centered and since rest ignored.
     }
-    // Loop over multitraj to obtain individual sub-trajectory lengths;
-    // the DFTs from these should be averaged separately
-    vector<uint> trajlengths;
-    // Create a vector of vector of frame indices for each FT.
     vector<vector<uint>> resample_FT_indices;
-    auto previt = mtopts->frameList().begin();
-    for (uint i = 0; i < mtopts->mtraj.size(); i++) {
-      trajlengths.push_back(mtopts->mtraj.nframes(i));
-      if (frames_per_ft < trajlengths.back()) {
-        // Integer division truncates toward zero
-        uint n_subsamples = trajlengths.back() / (frames_per_ft);
-        uint  total = n_subsamples * frames_per_ft;
-        uint expand_count = (trajlengths.back() - total) / n_subsamples;
-        // add the excess bins back into the framecount so they nearly cover
-        frames_per_ft += expand_count;
-        // compute the remainder after stretching the subsamples
-        total = n_subsamples * frames_per_ft;
-        uint remainder = trajlengths.back() - total;
-        // distribute remainder amongst the subsamples
-        for (uint j = 0; j < n_subsamples; j++) {
-          // One frame overlap for each of the first 'remainder' subsamples.
-          if (j != 0 && remainder > 0) {
-            remainder--;
-            previt--;
-          }
-          vector<uint> subframes(previt, previt + j * frames_per_ft);
-          resample_FT_indices.emplace_back(subframes);
-          previt += j * frames_per_ft;
-        }
-      } else {
-        cerr << "warning: trajectory " << i
-             << " has fewer frames than are needed for desired bin-width.\n";
-        vector<uint> trajframes(previt, previt + trajlengths.back());
-        resample_FT_indices.emplace_back(trajframes);
-        previt += trajlengths.back();
-      }
+    if (topts->welch) {
+      if (topts->contig)
+        resample_FT_indices = welch_contig(frames_per_ft, mtopts->frameList());
+      else
+        resample_FT_indices =
+            welch_resamples(frames_per_ft, mtopts->frameList(), mtopts->mtraj);
+    } else {
+      if (topts->contig)
+        resample_FT_indices =
+            bartlett_contig(frames_per_ft, mtopts->frameList());
+      else
+        resample_FT_indices = bartlett_resamples(
+            frames_per_ft, mtopts->frameList(), mtopts->mtraj);
     }
     // If we only need the three freqs from the spectral density for NOEs.
     if (topts->spectral_density) {
