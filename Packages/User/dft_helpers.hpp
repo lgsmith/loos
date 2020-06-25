@@ -12,20 +12,18 @@ bartlett_contig(const unsigned int frames_per_ft,
                 const std::vector<unsigned int> &frameList) {
   std::vector<std::vector<unsigned int>> resample_FT_indices;
   auto prevend = frameList.begin();
-  auto newend = frameList.begin();
   // divvy up the whole darn list, irrespective of everything
   unsigned int n_subsamples = frameList.size() / frames_per_ft;
+  auto endit = prevend + n_subsamples * frames_per_ft;
   if (n_subsamples == 0) {
     std::ostringstream oss;
     oss << "The pooled trajectory is not long enough for the desired "
            "bin-width\n";
     throw(LOOSError(oss.str()));
   }
-  for (unsigned int i = 0; i < n_subsamples; i++) {
-    newend = prevend + i * frames_per_ft;
-    // std::vector<unsigned int> subFTinds(prevend, newend);
-    resample_FT_indices.emplace_back(
-        std::vector<unsigned int>(prevend, newend));
+  for (auto newend = prevend + frames_per_ft; prevend != endit;
+       newend += frames_per_ft) {
+    resample_FT_indices.emplace_back(prevend, newend);
     prevend = newend;
   }
   return resample_FT_indices;
@@ -40,9 +38,9 @@ bartlett_resamples(const unsigned int frames_per_ft,
   // Create a vector of vector of frame indices for each FT.
   std::vector<std::vector<unsigned int>> resample_FT_indices;
   // previous end of sub ft will be beginning of next ft
-  auto prevend = frameList.begin();
-  auto newend = frameList.begin();
+  // auto newend = frameList.begin();
   auto trajlength = 0;
+  auto prevend = frameList.begin();
   // figure out how to break up the multitraj to obtain frames_per_ft chunks
   for (uint i = 0; i < mtraj.size(); i++) {
     trajlength = mtraj.nframes(i);
@@ -50,12 +48,12 @@ bartlett_resamples(const unsigned int frames_per_ft,
       // Integer division truncates toward zero.
       uint n_subsamples = trajlength / frames_per_ft;
       uint total = n_subsamples * frames_per_ft;
+      auto endit = prevend + total;
       // compute the remainder after stretching the subsamples
       uint remainder = trajlength - total;
       // distribute remainder amongst the subsamples
-      for (uint j = 1; j < n_subsamples+1; j++) {
-        newend = prevend + j * frames_per_ft;
-        // std::vector<uint> subframes(prevend, newend);
+      for (auto newend = prevend + frames_per_ft; prevend != endit;
+           newend += frames_per_ft) {
         resample_FT_indices.emplace_back(prevend, newend);
         prevend = newend;
       }
@@ -65,6 +63,8 @@ bartlett_resamples(const unsigned int frames_per_ft,
           << " has fewer frames than are needed for desired bin-width.\n";
       throw(LOOSError(oss.str()));
     }
+    // set prevend to end of last trajectory
+    prevend = trajlength + frameList.begin();
   }
   return resample_FT_indices;
 }
@@ -76,7 +76,7 @@ welch_contig(const unsigned int frames_per_ft,
              const float overlap_threshold = 0.2) {
   std::vector<std::vector<unsigned int>> resample_FT_indices;
   auto prevend = frameList.begin();
-  auto newend = frameList.begin();
+  auto endit = frameList.end();
   unsigned int n_samples = static_cast<uint>(
       std::ceil(static_cast<float>(frameList.size()) / frames_per_ft));
   unsigned int overlap =
@@ -91,14 +91,15 @@ welch_contig(const unsigned int frames_per_ft,
   }
   unsigned int remainder =
       frameList.size() - n_samples * (frames_per_ft - overlap);
-  for (auto i = 0; i < n_samples; i++) {
-    if (i != 0 && remainder > 0) {
+  for (auto newend = prevend + frames_per_ft; prevend != endit;
+       newend += frames_per_ft) {
+    if (prevend != frameList.begin() && remainder > 0) {
       remainder--;
-      newend = prevend + i * frames_per_ft - 1 - overlap;
+      newend -= 1 + overlap;
     } else {
-      newend = prevend + i * frames_per_ft - overlap;
+      newend -= overlap;
     }
-    resample_FT_indices.emplace_back(std::vector<uint>(prevend, newend));
+    resample_FT_indices.emplace_back(prevend, newend);
     prevend = newend;
   }
   return resample_FT_indices;
@@ -116,11 +117,11 @@ welch_resamples(const unsigned int frames_per_ft,
   std::vector<std::vector<uint>> resample_FT_indices;
   // previous end of sub ft will be beginning of next ft
   auto prevend = frameList.begin();
-  auto newend = frameList.begin();
   for (uint i = 0; i < mtraj.size(); i++) {
     trajlength = mtraj.nframes(i);
-    // figure out how to break up the multitraj to satisfy bin-width reqs for
-    // FT.
+    auto endit = prevend + trajlength;
+    auto beginit = prevend;
+    // Break up the multitraj to satisfy bin-width reqs for FT.
     if (frames_per_ft < trajlength) {
       // round number of trajes that will fit at this binwidth up, then overlap
       // them
@@ -129,24 +130,26 @@ welch_resamples(const unsigned int frames_per_ft,
       uint no_overlap_total = n_subsamples * frames_per_ft;
       uint overlap = (no_overlap_total - trajlength) / n_subsamples;
       // compute the remainder after stretching the subsamples
-      uint remainder = trajlength - overlap;
+      uint remainder = trajlength - (no_overlap_total - n_subsamples * overlap);
       // distribute remainder amongst the subsamples
-      for (uint j = 0; j < n_subsamples; j++) {
+      for (auto newend = prevend + frames_per_ft; prevend != endit;
+           newend += frames_per_ft - overlap) {
         // Extra one frame overlap for each of the first 'remainder' subsamples.
-        if (j != 0 && remainder > 0) {
+        if (prevend != beginit && remainder > 0) {
           remainder--;
-          newend = prevend + j * frames_per_ft - 1 - overlap;
+          newend -= 1 + overlap;
         } else { // otherwise just move up by total of nonoverlappedframes.
-          newend = prevend + j * frames_per_ft - overlap;
+          newend -= overlap;
         }
-        resample_FT_indices.emplace_back(
-            std::vector<unsigned int>(prevend, newend));
+        resample_FT_indices.emplace_back(prevend, newend);
         prevend = newend;
       }
     } else {
       throw(LOOSError("There are not enough frames in the trajectory for the "
                       "desired bin-width.\nConsider increasing bin-width."));
     }
+    // set prevend to the part in frameList corresponding to end of traj just processed.
+    prevend = trajlength + frameList.begin();
   }
   return resample_FT_indices;
 }
