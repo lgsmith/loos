@@ -53,10 +53,10 @@ bartlett_resamples(const unsigned int frames_per_ft,
       // compute the remainder after stretching the subsamples
       uint remainder = trajlength - total;
       // distribute remainder amongst the subsamples
-      for (uint j = 0; j < n_subsamples; j++) {
+      for (uint j = 1; j < n_subsamples+1; j++) {
         newend = prevend + j * frames_per_ft;
         // std::vector<uint> subframes(prevend, newend);
-        resample_FT_indices.emplace_back(std::vector<uint>(prevend, newend));
+        resample_FT_indices.emplace_back(prevend, newend);
         prevend = newend;
       }
     } else {
