@@ -3,9 +3,9 @@ from scipy.signal import correlate
 import loos
 from loos import pyloos
 
-modelfn = '/home/louis/gagug/gagug-tester.pdb'
-trajfn = '/home/louis/gagug/gagug-tester.dcd'
-selectionstr = '(name == "H8" || name == "H1\'") && resid < 3'
+modelfn = '/home/louis/Sync/gagug/traj/ROC.0/ROC.0.slagheap.al.pdb'
+trajfn = '/home/louis/Sync/gagug/traj/ROC.0/ROC.0.slagheap.al.xtc'
+selectionstr = 'name == "H8" || name == "H6" || name == "H5" || name == "H2" || name =~ "H[1-5]'" || name == "H5\'\'"'
 
 model = loos.createSystem(modelfn)
 traj = pyloos.Trajectory(trajfn, model, subset=selectionstr)

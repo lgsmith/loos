@@ -261,9 +261,9 @@ const double ns2s = 1e-9;
 // second order spherical harmonic, with multiples factored out.
 inline const double Y_2_0(const GCoord a, const GCoord b) {
   const GCoord diff = a - b;
-  const double length = diff.length();
-  const double r3 = length * length * length;
-  return 1.5 * diff[2] * diff[2] / (r3 * length * length) - (0.5 / r3);
+  const double recip_r = 1 / diff.length();
+  const double recip_r3 = recip_r * recip_r * recip_r;
+  return recip_r3 * (3.0 * diff[2] * diff[2] * recip_r * recip_r - 1.0);
 }
 
 int main(int argc, char *argv[]) {
@@ -367,8 +367,7 @@ int main(int argc, char *argv[]) {
     if (topts->spectral_density) {
       // initialize the mean J list
       for (uint i = 0; i < frqs.size(); i++) {
-        MatrixXd initialized_frq = MatrixXd::Zero(N, N);
-        J.emplace_back(move(initialized_frq));
+        J.emplace_back(MatrixXd::Zero(N, N));
       }
       for (const auto subFTInds : resample_FT_indices) {
         // Magic circle oscillator precomputation:
@@ -380,8 +379,10 @@ int main(int argc, char *argv[]) {
           traj->updateGroupCoords(nuclei);
           // compute second order index 0 spherical harmonics of all ij pairs.
           for (auto i = 0; i < N; i++)
-            for (auto j = 0; j < i; j++)
-              sample(i, j) = Y_2_0(nuclei[i]->coords(), nuclei[j]->coords());
+            for (auto j = 0; j < i; j++) {
+              auto sij = Y_2_0(nuclei[i]->coords(), nuclei[j]->coords());
+              sample(i, j) = sij;
+            }
           // feed this sample into the DFT object
           dft(sample);
         }
@@ -484,7 +485,7 @@ int main(int argc, char *argv[]) {
   vector<MatrixXd> intensities;
   pt::ptree jsontree;
   if (topts->isa) {
-    vector<double> mix{topts->m * ms2s};
+    vector<double> mix{topts->tau * ms2s};
     intensities.push_back(move(R * mix[0]));
     jsontree = make_NOE_json(intensities, mix, nuclei);
   } else {
@@ -492,10 +493,11 @@ int main(int argc, char *argv[]) {
     // issue that the upper triangle of the J-arithmetic above is zeros.
     SelfAdjointEigenSolver<MatrixXd> es(R);
     MatrixXd eVecs = es.eigenvectors();
-    cout << "eVecs:\n" << eVecs << endl;
+    cerr << "eVecs:\n" << eVecs << endl;
     MatrixXd invEvecs = eVecs.inverse();
-    cout << "invEvecs:\n" << invEvecs << endl;
-    cout << "R - eVecs*evals*invEvecs:\n"
+    cerr << "invEvecs:\n" << invEvecs << endl;
+    cerr << "eigenvalues:\n" << es.eigenvalues() << endl;
+    cerr << "R - eVecs*evals*invEvecs:\n"
          << R - (eVecs * es.eigenvalues().asDiagonal() * invEvecs) << endl;
     if (topts->M != 1.0) {
       invEvecs *= topts->M;
