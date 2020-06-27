@@ -16,7 +16,7 @@ public:
   DFTMagicCircle(SampleType &empty_sample, const std::vector<double> &frqs,
                  const double fs, const unsigned int n_samples);
   void operator()(const SampleType &sample);
-  std::vector<SampleType> spectral_density(bool recompute = false);
+  std::vector<SampleType> power_spectral_density(bool recompute = false);
   // setters and getters
   std::vector<SampleType> get_y2(void);
   void set_y2(std::vector<SampleType> &recur2);
@@ -63,7 +63,7 @@ inline void DFTMagicCircle::operator()(const SampleType &sample) {
 }
 // power spectral density
 inline std::vector<SampleType>
-DFTMagicCircle::spectral_density(bool recompute) {
+DFTMagicCircle::power_spectral_density(bool recompute) {
   if (J.size() != k.size() || recompute) {
     for (uint i = 0; i < k.size(); i++) {
       J.push_back(

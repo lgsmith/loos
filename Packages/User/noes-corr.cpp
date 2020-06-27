@@ -391,14 +391,9 @@ int main(int argc, char *argv[]) {
           // feed this sample into the DFT object
           dft(sample);
         }
-        // this is the zero pad section. Possibly not needed.
-        // uint zeros_count = subFTInds.size();
-        // while (zeros_count > 0) {
-        //   dft(MatrixXd::Zero(N, N));
-        // }
         // compute spectral densities from DFT here.
         for (uint i = 0; i < frqs.size(); i++) {
-          J[i] += dft.spectral_density()[i];
+          J[i] += dft.power_spectral_density()[i];
         }
       }
       for (uint i = 0; i < frqs.size(); i++)
@@ -414,6 +409,7 @@ int main(int argc, char *argv[]) {
       Eigen::array<int, 1> dim = {(0)};
       for (const auto subFTInds : resample_FT_indices) {
         Tensor<double, 3> signal(points, N, N);
+
         signal.setZero();
         // Loop over the part of the multitraj corresponding to this
         // sub-transform
@@ -431,6 +427,12 @@ int main(int argc, char *argv[]) {
         mean_periodogram +=
             (signal.template fft<RealPart, FFT_FORWARD>(dim)).abs().square();
       }
+      // define a scale term equal to the timestep sq / length_of_traj
+      // making the periodogram a Power Spectral Density
+      double scale = 1.0 / (static_cast<double>(points) * fs * static_cast<double>(resample_FT_indices.size()));     
+      // scale and normalize the mean_periodogram
+      mean_periodogram = mean_periodogram * scale;
+      
       // figure out which bins are needed to fill out J, above.
       for (const auto w : frqs) {
         // casting to unsigned int truncates, instead of rounding
@@ -449,13 +451,14 @@ int main(int argc, char *argv[]) {
       // build the frq and lag bin vectors for plotting
       vector<double> lag_bins;
       vector<double> frq_bins;
-      for (uint f = 0; f < points; f++) {
-        correlation.chip(f, 0) =
-            correlation.chip(f, 0) * 1.0 / static_cast<double>(points - f);
+      for (uint k = 0; k < points; k++) {
+        // 
+        correlation.chip(k, 0) =
+            correlation.chip(k, 0) * 1.0 / static_cast<double>(points - k);
         // lags should be distributed as reciprocal of bin-width
-        lag_bins.push_back(f / actual_binwidth);
+        lag_bins.push_back(k / actual_binwidth);
         // lower bin edges should be a function of bin-width
-        frq_bins.push_back(f * actual_binwidth);
+        frq_bins.push_back(k * actual_binwidth);
       }
       // point p_corrs at correlation, for writing data later.
       p_corrs.reset(&correlation);

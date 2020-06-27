@@ -37,7 +37,7 @@ int main() {
       cout << dft.get_y1()[i] << " " << dft.get_y2()[i] << " ";
     }
   }
-  vector<MatrixXd> J = dft.spectral_density();
+  vector<MatrixXd> J = dft.power_spectral_density();
   // gain for DFT is approx N/2, so gain on spectrum is (N/2)^2
   const double gain = N_samples * N_samples / 4;
   for (uint i = 0; i < frqs.size(); i++) {
