@@ -539,5 +539,5 @@ int main(int argc, char *argv[]) {
                    "Eigendecomposition was given invalid input.");
   }
   jsontree.put("invocation", header);
-  pt::write_json(cout, jsontree);
+  // pt::write_json(cout, jsontree);
 }
