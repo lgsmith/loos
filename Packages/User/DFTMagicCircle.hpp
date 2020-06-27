@@ -14,7 +14,7 @@ private:
 public:
   // needs frequencies in Hertz
   DFTMagicCircle(SampleType &empty_sample, const std::vector<double> &frqs,
-                 const double sampling_rate, const unsigned int n_samples);
+                 const double fs, const unsigned int n_samples);
   void operator()(const SampleType &sample);
   std::vector<SampleType> spectral_density(bool recompute = false);
   // setters and getters
@@ -30,14 +30,14 @@ public:
 
 DFTMagicCircle::DFTMagicCircle(SampleType &empty_sample,
                                const std::vector<double> &frqs,
-                               const double sampling_rate,
+                               const double fs,
                                const unsigned int n_samples) {
-  // compute scale-factor now, for use with spectral density later
-  scale = 4.0 / (static_cast<double>(n_samples * n_samples));
+  // compute scale-factor now, for use returning power spectral density
+  scale = 1.0 / (static_cast<double>(n_samples) * fs);
   // buildup k vector with sinusoids corresponding to tracked frqs.
   for (const auto f : frqs) {
     // convert to radians per sample over two, take sin, then multiply by 2
-    k.push_back(2 * std::sin(f * M_1_PI / sampling_rate)); // note pi, not 2*pi
+    k.push_back(2 * std::sin(f * M_1_PI / fs)); // note pi, not 2*pi
     // for each frq, set up both recursion half-step states to zero.
     y1.push_back(SampleType::Zero(empty_sample.rows(), empty_sample.cols()));
     y2.push_back(SampleType::Zero(empty_sample.rows(), empty_sample.cols()));
@@ -61,7 +61,7 @@ inline void DFTMagicCircle::operator()(const SampleType &sample) {
     y1[i].triangularView<Eigen::Lower>() += k[i] * y2[i];
   }
 }
-
+// power spectral density
 inline std::vector<SampleType>
 DFTMagicCircle::spectral_density(bool recompute) {
   if (J.size() != k.size() || recompute) {

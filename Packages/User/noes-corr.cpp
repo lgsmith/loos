@@ -62,14 +62,16 @@ public:
        "time-spacing of samples from trajectory, in GHz (frames/ns). A frequency of zero is an error.")
       ("mix,m", po::value<double>(&m)->default_value(0),
        "NOE mixing time, in milliseconds.")
+      ("threads", po::value<int>(&threads)->default_value(1),
+       "Number of threads to use for FFT (used only with '-C').")
       ("tau", po::value<double>(&tau)->default_value(0),
        "set a rigid-body correlation time, in ns.")
       ("buildup-curve-range", po::value<std::string>(&buildup_range), 
-       "Which mixing times to write out for plotting (matlab style range, overrides -m).")
+       "Which mixing times (in ms) to write out for plotting (matlab style range, overrides -m).")
       ("bin-width", po::value<double>(&bin_width)->default_value(10.0),
        "Width for DFT bins, in kHz.")
       ("welch", po::bool_switch(&welch)->default_value(false),
-       "Overlap subFTs such that all frames are used with seleced bin-width. Otherwise, drop data from the beginning of each trajectory file.")
+       "Overlap subFTs such that all frames are used with selected bin-width. Otherwise, drop data from the beginning of each trajectory file.")
       ("contiguous", po::bool_switch(&contig)->default_value(false),
        "If thrown, treat each provided trajectory as part of continuous time-series. Otherwise, treat them as independent trajectories.")
       ("isa,I", po::bool_switch(&isa)->default_value(false),
@@ -110,6 +112,7 @@ public:
       cerr << "Usage Error: --spectral-density && --correlation\n"
            << "You've asked for two different methods of computing the "
               "spectral density. Pick one.\n";
+      return false;
     }
     return true;
   }
@@ -244,11 +247,19 @@ inline vector<MatrixXd> rigid_spectral_density(MatrixXd &dist6,
                                                const double tau,
                                                const double total_weight) {
   vector<MatrixXd> jvec;
-  // (1/4*pi) * r^(-6) * (2\tau_c/(1 + w^2 \tau_c^2 ))
+  // (1/4*pi) * <r^(-6)> * (2\tau_c/(1 + w^2 \tau_c^2 ))
   for (auto w : omega)
-    jvec.push_back(dist6 * 2.0 * tau * tau /
+    jvec.push_back(dist6 * 2.0 * tau /
                    ((1.0 + w * w * tau * tau) * total_weight * 4.0 * PI));
   return jvec;
+}
+
+// second order spherical harmonic, with multiples factored out.
+inline const double Y_2_0(const GCoord a, const GCoord b) {
+  const GCoord diff = a - b;
+  const double recip_r = 1.0 / diff.length();
+  const double recip_r3 = recip_r * recip_r * recip_r;
+  return recip_r3 * (1.5 * diff[2] * diff[2] * recip_r * recip_r - 0.5);
 }
 
 // time conversions
@@ -257,14 +268,6 @@ const double mhz2Hz = 1e6;
 const double khz2Hz = 1e3;
 const double ms2s = 1e-3;
 const double ns2s = 1e-9;
-
-// second order spherical harmonic, with multiples factored out.
-inline const double Y_2_0(const GCoord a, const GCoord b) {
-  const GCoord diff = a - b;
-  const double recip_r = 1 / diff.length();
-  const double recip_r3 = recip_r * recip_r * recip_r;
-  return recip_r3 * (3.0 * diff[2] * diff[2] * recip_r * recip_r - 1.0);
-}
 
 int main(int argc, char *argv[]) {
 
@@ -301,14 +304,17 @@ int main(int argc, char *argv[]) {
   AtomicGroup nuclei = selectAtoms(model, sopts->selection);
   const Eigen::Index N = (Eigen::Index)nuclei.size();
   // NOE precalculations
-  const double mu0 =
-      1.25663706212e4; // wikipedia, H/Angstrom (10^10 * value in H/m)
+  const double mu0 = 1.25663706212e-6 // wikipedia, H/m. H = T * m^2 / A
+                     * 1e20           // 1e20 Angstrom/m for numerator
+                     * 1e-10;         // 1e-10 m/Angstrom for denomenator
   const double gamma =
-      topts->gamma * 2.0 * PI * mhz2Hz; // convert Gamma from mHz/T to Rad/s*T
-  const double hbar = 1.054571817e-34;  // wikipedia, J*s
-  const double N_A = 6.02214076e23;     // Wikipedia, Avogadro's Constant
+      topts->gamma * 2.0 * PI * mhz2Hz; // convert Gamma from mHz/T to Rad/(s*T)
+  const double hbar = 1.054571817e-34   // wikipedia, J*s. J = kg * m^2 * Hz^2
+                      * 1e20;           // * 1e20 (Angstroms/m)^2.
+  // const double N_A = 6.02214076e23;     // Wikipedia, Avogadro's Constant
   // dipolar interaction constant from Brueschweiler & Case, 1994 (eqs 33-35)
-  const double xi = N_A * gamma * gamma * hbar * mu0 / (4.0 * PI);
+  // related to equation 9, but without the factor of sqrt(12)
+  const double xi = gamma * gamma * hbar * mu0 / (4.0 * PI);
   // this is equivalent to 0.5 * zeta from eqn 33 in B&C.
   // The 0.5 comes from factoring out of spectral density prefactors so that
   // they'd be whole numbers.
@@ -320,8 +326,7 @@ int main(int argc, char *argv[]) {
   vector<MatrixXd> J;
   // matrix to hold return values of calculation in forloop
   MatrixXd sample = MatrixXd::Zero(N, N);
-  // make unique pointers to point to data that may be created, depending on the
-  // following
+  // make unique pointers for that may be created, depending on the following
   unique_ptr<Tensor<double, 3>> p_mean_spectra;
   unique_ptr<Tensor<double, 3>> p_corrs;
   unique_ptr<vector<double>> p_frqbins;
@@ -470,11 +475,11 @@ int main(int argc, char *argv[]) {
       }
       wopts->weights->accumulate();
     }
-    // use approximate formula for spectral densitiies here.
+    // use approximate formula for spectral densities here.
     J = rigid_spectral_density(sample, frqs, topts->tau * ns2s,
                                wopts->weights->totalWeight());
   }
-  // following van gunsteren, compute spectral density based rho and sigma
+  // following van Gunsteren, compute spectral density based rho and sigma
   MatrixXd rho((J[0] + (3.0 * J[1]) + (6.0 * J[2])).selfadjointView<Lower>());
   MatrixXd R(((6.0 * J[2]) - J[0]).selfadjointView<Lower>());
   R.diagonal(0) = rho.colwise().sum();
@@ -485,7 +490,7 @@ int main(int argc, char *argv[]) {
   vector<MatrixXd> intensities;
   pt::ptree jsontree;
   if (topts->isa) {
-    vector<double> mix{topts->tau * ms2s};
+    vector<double> mix{topts->m * ms2s};
     intensities.push_back(move(R * mix[0]));
     jsontree = make_NOE_json(intensities, mix, nuclei);
   } else {
