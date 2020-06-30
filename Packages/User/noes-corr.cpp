@@ -417,9 +417,9 @@ int main(int argc, char *argv[]) {
           traj->readFrame(subFTInds[f]);
           traj->updateGroupCoords(nuclei);
           // Load the tensor (3D array) with sph. harm. for this frame.
-          for (auto i = 0; i < N; i++) {
+          for (auto i = N - 1; i != 0; i--) {
             for (auto j = 0; j < i; j++) {
-              signal(f, j, i) = Y_2_0(nuclei[j]->coords(), nuclei[i]->coords());
+              signal(f, i, j) = Y_2_0(nuclei[i]->coords(), nuclei[j]->coords());
             }
           }
         }
@@ -439,11 +439,13 @@ int main(int argc, char *argv[]) {
         uint k = static_cast<unsigned int>(w / (2 * PI * fs));
         MatrixXd amplitude = MatrixXd::Zero(N, N);
         // cool kids would do this with a map to the chip...
-        for (auto i = 0; i < N; i++)
-          for (auto j = 0; j < N; j++)
-            amplitude(j, i) = mean_periodogram(k, j, i);
+        for (auto i = N - 1; i != 0; i--)
+          for (auto j = 0; j < i+1; j++)
+            amplitude(i, j) = mean_periodogram(k, i, j);
         J.emplace_back(move(amplitude));
       }
+      for (const auto j : J)
+        cout << "An amplitude record:\n" << j << endl;
 
       // finish calculating the discrete correlation
       Tensor<double, 3> correlation =
@@ -539,5 +541,5 @@ int main(int argc, char *argv[]) {
                    "Eigendecomposition was given invalid input.");
   }
   jsontree.put("invocation", header);
-  // pt::write_json(cout, jsontree);
+  pt::write_json(cout, jsontree);
 }
