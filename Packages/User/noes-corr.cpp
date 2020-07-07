@@ -488,10 +488,10 @@ int main(int argc, char *argv[]) {
   MatrixXd rho((J[0] + (3.0 * J[1]) + (6.0 * J[2])).selfadjointView<Lower>());
   MatrixXd R(((6.0 * J[2]) - J[0]).selfadjointView<Lower>());
   R.diagonal(0) = rho.colwise().sum();
-  cout << "this is R, but not in correct units:\n" << R << "\n";
+  cerr << "this is R, but not in correct units:\n" << R << "\n";
   // multiply by units here
   R *= zeta;
-  cout << "this is R:\n" << R << "\n";
+  cerr << "this is R:\n" << R << "\n";
   vector<MatrixXd> intensities;
   pt::ptree jsontree;
   if (topts->isa) {
