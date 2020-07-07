@@ -495,8 +495,8 @@ int main(int argc, char *argv[]) {
   vector<MatrixXd> intensities;
   pt::ptree jsontree;
   if (topts->isa) {
-    vector<double> mix{topts->m * ms2s};
-    intensities.push_back(move(R * mix[0]));
+    vector<double> mix{topts->m};
+    intensities.push_back(move(R * ms2s * mix[0]));
     jsontree = make_NOE_json(intensities, mix, nuclei);
   } else {
     // SelfAdjointEigensovler only looks at the lower triangle, so it is not an
