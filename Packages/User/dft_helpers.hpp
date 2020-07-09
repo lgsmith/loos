@@ -52,7 +52,8 @@ bartlett_resamples(const unsigned int frames_per_ft,
       // compute the remainder after stretching the subsamples
       uint remainder = trajlength - total;
       // distribute remainder amongst the subsamples
-      for (auto newend = prevend + frames_per_ft; prevend != endit;
+      for (auto newend = prevend + frames_per_ft; 
+           prevend < endit - frames_per_ft;
            newend += frames_per_ft) {
         resample_FT_indices.emplace_back(prevend, newend);
         prevend = newend;
