@@ -110,8 +110,8 @@ public:
     }
     if (spectral_density && corr) {
       cerr << "Usage Error: --spectral-density && --correlation\n"
-           << "You've asked for two different methods of computing the "
-              "spectral density. Pick one.\n";
+           << "You've asked for two different methods of computing \n"
+              "the spectral density. Pick one.\n";
       return false;
     }
     return true;
@@ -247,9 +247,9 @@ inline vector<MatrixXd> rigid_spectral_density(MatrixXd &dist6,
                                                const double tau,
                                                const double total_weight) {
   vector<MatrixXd> jvec;
-  // (1/4*pi) * <r^(-6)> * (2\tau_c/(1 + w^2 \tau_c^2 ))
+  // J(w) = (1/4*pi) * <r^(-6)> * (2\tau_c/(1 + w^2 \tau_c^2 ))
   for (auto w : omega)
-    jvec.push_back(dist6 * 2.0 * tau /
+    jvec.emplace_back(dist6 * 2.0 * tau /
                    ((1.0 + w * w * tau * tau) * total_weight * 4.0 * PI));
   return jvec;
 }
