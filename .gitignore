@@ -1,17 +1,17 @@
 ### Some files to ignore in LOOS
 
+# If you're trying to add something and it's not working, check out the
+# directory level ignore globs below. Also,
+# 'git check-ignore -v path/to/frustratingly/ignored/file'
+# is your friend.
+
+
+# ignore mac crap
+**.DS_Store
+
 # Object files
 *.o
 *.os
-
-# Built (from flex, bison, and swig)
-*.cc
-revision.cpp
-loos.py
-loos/__init__.py
-setup.sh
-setup.csh
-custom.py
 
 # Library files
 *.so
@@ -48,9 +48,14 @@ GTAGS
 *.sublime*
 
 # Vi cruft
-*.swp
+**.swp
 
+# stuff from sublime text
+**.sublime-project
+**.sublime-workspace
+**.clang_complete
 
+<<<<<<< HEAD
 # VSCode cruft
 **.vscode
 
@@ -59,20 +64,59 @@ GTAGS
 
 # JSON files
 .*.json
+=======
+# pycharm cruft
+**.idea
+>>>>>>> main
 
 # latex cruft
 *.aux
 *.out
 *.toc
 
-# mac cruft
-**.DS_Store
-
 # some c++ headers used by atom
 .stdafx.c++.pch
 
-###EXES
+# ignore the contents of directories with binaries in them
+# Note that writing this statement in this way will not ignore the
+# directory itself, allowing git to index the contents of these,
+# then determine which of them to ignore. That way, "don't ignore"
+# patterns are honored within them.
+src/*
+Tools/*
+utils/*
+# when there is depth, deeper directories must also be included explicitly
+!Packages/*/
+Packages/*/*
+!Packages/*/*/
+Packages/*/*/*/
 
+# don't ignore source files anywhere
+!**.cpp
+!**.hpp
+!**.py
+!**.pl
+
+# don't ignore any markdown files, eg README.md
+!**.md
+
+# don't ignore swig headers anywhere
+!**.i
+
+# don't ignore sconscript or sconstruct files anywhere
+!**SConscript
+!**SConstruct
+
+# Built (from flex, bison, and swig)
+*.cc
+revision.cpp
+loos.py
+loos/__init__.py
+setup.sh
+setup.csh
+custom.py
+
+<<<<<<< HEAD
 Tools/rms-overlap
 Tools/verap
 Tools/renum-pdb
@@ -708,3 +752,6 @@ Packages/Convergence/ufidpick
 Packages/Convergence/decorr_time
 Packages/Convergence/bcom
 Packages/Convergence/chist
+=======
+# put custom ignores below here
+>>>>>>> main

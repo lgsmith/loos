@@ -434,6 +434,9 @@ namespace loos {
       box.box(GCoord(x,y,z));
     }
 
+    //! compute OCF for all atom-pairs in AG of distance offset from one another
+    const greal ocf(uint offset);
+
     //! Provide access to the underlying shared periodic box...
     loos::SharedPeriodicBox sharedPeriodicBox() const { return(box); }
 
@@ -484,7 +487,6 @@ namespace loos {
       Distance2WithPeriodicity op(box);
       return(contactwith_private(dist, grp, min, op));
     }
-
 
     //! Distance-based search for bonds
     /** Searches for bonds within an AtomicGroup based on distance.
@@ -797,6 +799,53 @@ namespace loos {
      */
     double packingScore(const AtomicGroup& other, const GCoord &box, bool norm) const;
 
+
+    //* Logistic contact function between this group and another
+    /**
+        Compute the number of contacts between the centroid of this AG
+        and the centroid of another AG, using a smooth logistic
+        function
+        S = 1/(1 + dist/radius)**sigma
+     */
+    double logisticContact(const AtomicGroup& group, double radius,
+                           int sigma, const GCoord& box) const;
+
+    //* Similar to logisticContact() but the distance between reference
+    //  group centroid and another group centroid is 2D Euclidean distance
+    //  instead of 3D. Useful when calculating number of contacts in a 
+    //  plane
+    /**
+        Compute the number of contacts between the centroid of this AG
+        and the centroid of another AG, using a smooth logistic
+        function
+        S = 1/(1 + dist/radius)**sigma
+     */
+    double logisticContact2D(const AtomicGroup& group, double radius,
+                           int sigma, const GCoord& box) const;
+
+    //* Hard contact function between this group and another
+    /**
+        Compute contact value of another AG with respect to
+        the centroid of a given AG, using a hard step
+        function
+        S = 1; iff dist <= radius; else 0
+     */
+    double hardContact(const AtomicGroup& group, double radius,
+                           const GCoord& box) const;
+
+    //* Similar to hardContact() but the distance between reference
+    //  group centroid and another group centroid is 2D Euclidean distance
+    //  instead of 3D. Useful when calculating number of contacts or local
+    //  neighbor density in a plane
+    /**
+        Compute contact value of another AG with respect to
+        the centroid of a given AG, using a hard step
+        function
+        S = 1; iff dist <= radius; else 0
+     */
+    double hardContact2D(const AtomicGroup& group, double radius,
+                           const GCoord& box) const;
+
   private:
 
 	// These are functors for calculating distance between two coords
@@ -819,6 +868,33 @@ namespace loos {
       GCoord _box;
     };
 
+
+    // This function is to to remove code duplication in 
+    // logisticContacts() and logisticContacts2D(). 
+    // Handle even and odd powers separately -- even can
+    // avoid the sqrt
+    // Sigh, this doesnt' seem to make it much faster...
+    double logisticFunc(const GCoord& cent, const GCoord& other, double radius, int sigma, const GCoord& box) const{
+        double prod;
+        if (sigma % 2 == 0) {
+            double distance2 = cent.distance2(other, box);
+            double ratio = distance2/(radius*radius);
+            prod = ratio;
+            for (int j=0; j<(sigma/2)-1; ++j) {
+                prod *= ratio;
+            }
+        }
+        else {
+            double distance = cent.distance(other, box);
+            double ratio = distance/radius;
+            prod = ratio;
+            for (int j=0; j < sigma-1; ++j) {
+                prod *= ratio;
+            }
+        }
+        double sum = 1./(1. + prod);
+        return(sum);
+    }
 
 
     // Find all atoms in the current group that are within dist
