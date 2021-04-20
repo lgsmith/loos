@@ -143,14 +143,28 @@ for i in putative:
 # list of donor-H-acceptor triples present in reference crds
 ref_dhas = []
 
+# if we are going to write out a reference substructure
+if args.nativeHBs:  # empty string will eval to False
+    native_hb_group = loos.AtomicGroup()
+
 # fill out the donor-H-acceptor list
 for i in acceptors:
     for j in donors:
         if model_hbs.hBonded(i, j[0], j[1]):
             ref_dhas.append(np.array([i, j[0], j[1]])) 
             donors.remove(j) # assumes D-H pairs can only be used once
+            if args.nativeHBs:
+                native_hb_group.append(i)
+                native_hb_group.append(j)
             break # don't check any extra D-Pairs
             # Note: remove must be applied last at this depth to avoid inconsistent list counters
+
+# if we have a filename to write the native hbs to, do that.
+if args.nativeHBs:
+    native_hb_pdb = loos.PDB_fromAtomicGroup(native_hb_group)
+    with open(args.nativeHBs, 'r') as fp:
+        fp.write(native_hb_pdb)
+        
 
 # can't append to np arrays so array this after constructiion.
 ref_dhas = np.array(ref_dhas)
