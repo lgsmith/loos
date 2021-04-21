@@ -150,12 +150,12 @@ if args.nativeHBs:  # empty string will eval to False
 # fill out the donor-H-acceptor list
 for i in acceptors:
     for j in donors:
-        if model_hbs.hBonded(i, j[0], j[1]):
-            ref_dhas.append(np.array([i, j[0], j[1]])) 
+        h, d = j
+        if model_hbs.hBonded(i, h, d):
+            ref_dhas.append(np.array([i, h, d])) 
             donors.remove(j) # assumes D-H pairs can only be used once
             if args.nativeHBs:
-                native_hb_group += i
-                native_hb_group += j
+                native_hb_group += i + h + d
             break # don't check any extra D-Pairs
             # Note: remove must be applied last at this depth to avoid inconsistent list counters
 
