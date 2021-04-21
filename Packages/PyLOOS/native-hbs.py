@@ -154,8 +154,8 @@ for i in acceptors:
             ref_dhas.append(np.array([i, j[0], j[1]])) 
             donors.remove(j) # assumes D-H pairs can only be used once
             if args.nativeHBs:
-                native_hb_group.append(i)
-                native_hb_group.append(j)
+                native_hb_group += i
+                native_hb_group += j
             break # don't check any extra D-Pairs
             # Note: remove must be applied last at this depth to avoid inconsistent list counters
 
