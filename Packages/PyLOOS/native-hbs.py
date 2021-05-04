@@ -80,7 +80,7 @@ import argparse
 def format_header(dhas):
     retlist = ['# frame']
     for x in dhas:
-        names = ['_'.join([i.resname(), str(i.resid()), i.name()]) for i in x]
+        names = ['_'.join([a.resname(), str(a.resid()), a.name()]) for a in x]
         retlist.append('-'.join(names))
     retlist.append('total_inframe')
     return '\t'.join(retlist) + '\n'
@@ -131,14 +131,14 @@ donors = []
 acceptors = loos.AtomicGroup()
 
 # build list of donor and acceptor groups from putative groups.
-for i in putative:
+for a in putative:
     bound_to_hydrogen = False
     for h in hydrogens:
-        if i.isBoundTo(h):
-            donors.append((h,i)) # Associate donor with its hydrogen
+        if a.isBoundTo(h):
+            donors.append((h,a)) # Associate donor with its hydrogen
             bound_to_hydrogen = True
     if not bound_to_hydrogen:
-        acceptors.append(i)
+        acceptors.append(a)
 
 # list of donor-H-acceptor triples present in reference crds
 ref_dhas = []
@@ -148,22 +148,25 @@ if args.nativeHBs:  # empty string will eval to False
     native_hb_group = loos.AtomicGroup()
 
 # fill out the donor-H-acceptor list
-for i in acceptors:
+for a in acceptors:
     for j in donors:
-        h, d = j
-        if model_hbs.hBonded(i, h, d):
-            ref_dhas.append(np.array([i, h, d])) 
+        h, d = j  # note, H and I are 'Atoms' not single atom AGs.
+        if model_hbs.hBonded(a, h, d):
+            ref_dhas.append(np.array([a, h, d])) 
             donors.remove(j) # assumes D-H pairs can only be used once
             if args.nativeHBs:
-                native_hb_group += i + h + d
+                native_hb_group += a 
+                native_hb_group.append(h)
+                native_hb_group.append(d)
             break # don't check any extra D-Pairs
             # Note: remove must be applied last at this depth to avoid inconsistent list counters
 
 # if we have a filename to write the native hbs to, do that.
 if args.nativeHBs:
     native_hb_pdb = loos.PDB_fromAtomicGroup(native_hb_group)
-    with open(args.nativeHBs, 'r') as fp:
-        fp.write(native_hb_pdb)
+    with open(args.nativeHBs, 'w') as fp:
+        print(native_hb_pdb)
+        fp.write(str(native_hb_pdb))
         
 
 # can't append to np arrays so array this after constructiion.
