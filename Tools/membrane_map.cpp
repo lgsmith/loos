@@ -1,5 +1,5 @@
 /*
- *  Compute membrane property distribution about a protein 
+ *  Compute membrane property distribution about a protein
  *  Can compute chain molecular order parameter, tilt vector, or density
  *
  *  Alan Grossfield
@@ -39,12 +39,12 @@ using namespace loos;
 namespace opts = loos::OptionsFramework;
 namespace po = loos::OptionsFramework::po;
 
-enum CalcType { DENSITY, ORDER, HEIGHT, VECTOR };
+enum CalcType { DENSITY, ORDER, HEIGHT, VECTOR, DIPOLE };
 
 class ToolOptions: public opts::OptionsPackage
 {
 public:
-    void addGeneric(po::options_description& o) 
+    void addGeneric(po::options_description& o)
         {
         o.add_options()
             ("xmin", po::value<double>(&xmin)->default_value(-50), "x histogram range")
@@ -53,14 +53,16 @@ public:
             ("ymin", po::value<double>(&ymin)->default_value(-50), "y histogram range")
             ("ymax",  po::value<double>(&ymax)->default_value(50), "y histogram range")
             ("ybins",  po::value<uint>(&ybins)->default_value(50), "y histogram bins")
-            ("calc", po::value<string>(&calc_type)->default_value(string("density")), "property to calculate (density, height, order, vector)")
+            ("calc", po::value<string>(&calc_type)->default_value(string("density")), "property to calculate (density, height, order, vector, dipole)")
             ("upper-only", "Map only the upper leaflet")
             ("lower-only", "Map only the lower leaflet")
             ("ref-structure", po::value<string>(&reference_filename), "Align to an external structure instead of the first frame")
+            ("target-selection", po::value<string>(&target_selection), "Selection to use to calculate property")
+            ("align-selection", po::value<string>(&align_selection), "Selection used to align the system")
             ;
         }
 
-    bool postConditions(po::variables_map& vm) 
+    bool postConditions(po::variables_map& vm)
         {
         if (calc_type.compare(string("density"))==0)
             {
@@ -78,10 +80,14 @@ public:
             {
             type = VECTOR;
             }
-        else 
+        else if (calc_type.compare(string("dipole"))==0)
+            {
+            type = DIPOLE;
+            }
+        else
             {
             cerr << "Error: unknown calculation type '" << calc_type
-                 << "' (must be density, height, order, or vector)"
+                 << "' (must be density, height, order, vector, or dipole)"
                  << endl;
             return(false);
             }
@@ -102,6 +108,15 @@ public:
                  << endl;
             exit(-1);
             }
+
+        if (vm.count("align_selection"))
+            {
+            has_align = true;
+            }
+        else
+            {
+            has_align = false;
+            }
         return(true);
         }
 
@@ -109,15 +124,18 @@ public:
     uint xbins, ybins;
     string calc_type;
     string reference_filename;
+    string align_selection;
+    string target_selection;
     CalcType type;
     bool upper_only;
     bool lower_only;
+    bool has_align;
 };
 
 
 string fullHelpMessage(void)
     {
-    string msg = 
+    string msg =
 "\n"
 "SYNOPSIS\n"
 "\n"
@@ -147,6 +165,7 @@ string fullHelpMessage(void)
 "             height: average z-position of the centroid of the selection\n"
 "             order: molecular order parameter (see below)\n"
 "             vector: orientation vector\n"
+"             dipole: dipole vector\n"
 "\n"
 "             The molecular order parameter is calculated using the \n"
 "             principal axes of the selection; the 2nd and 3rd axes are\n"
@@ -161,17 +180,32 @@ string fullHelpMessage(void)
 "             which can be plotted in gnuplot using the \"with vector\" \n"
 "             option.\n"
 "\n"
+"             Dipole is the electric dipole, computed using partial\n"
+"             charges, which must be present for this calculation to work.\n"
+"\n"
 "\n"
 "\n"
 "EXAMPLE\n"
 "\n"
-"membrane_map --xmin -30 --xmax 30 --ymin -30 --ymax 30 --xbins 30 --ybins 30 --splitby mol example.psf dark_ensemble_20.dcd 'segid == \"RHOD\"' 'resname == \"DHA\"'\n"
+"membrane_map --xmin -30 --xmax 30 --ymin -30 --ymax 30 --xbins 30 --ybins 30 --splitby mol example.psf dark_ensemble_20.dcd --align-selection 'segid == \"RHOD\"' --target-selection 'resname == \"DHA\"'\n"
 "\n"
 "          This sets the histograms to run from -30:30 in x and y, with \n"
 "          2 ang x 2 ang bins.  It uses the segment name RHOD to align the\n"
 "          snapshots, and uses DHA chains as the targets.  Since no \n"
 "          calculation type is specified, a number density is calculated. \n"
 "          The DHA chains are split up on the basis of connectivity.\n"
+"\n"
+"If you wish to examine membrane properties in general (e.g. for a phase-\n"
+"separated membrane with no protein) you can choose to not use an alignment\n"
+"selection.  However, since domains may drift around during the simulation, \n"
+"you may want to run the code on discrete ranges of frames rather than just \n"
+"averaging over the whole trajectory. For example, you could modify the \n"
+"previous example to be:\n"
+"\n"
+"membrane_map --range 200:299 --xmin -30 --xmax 30 --ymin -30 --ymax 30 --xbins 30 --ybins 30 --splitby mol example.psf dark_ensemble_20.dcd --target-selection 'resname == \"DHA\"'\n"
+"\n"
+"This calculation would not perform any alignment, and would skip the first\n"
+"200 frames, use the next 100 frames, then skip the rest of the trajectory.\n"
 "\n"
 "POTENTIAL COMPLICATIONS\n"
 "\n"
@@ -237,8 +271,6 @@ int main(int argc, char *argv[])
     opts::BasicSplitBy *sopts = new opts::BasicSplitBy;
     opts::RequiredArguments* ropts = new opts::RequiredArguments;
     ToolOptions* topts = new ToolOptions;
-    ropts->addArgument("align-selection", "selection to align on");
-    ropts->addArgument("target-selection", "selection to calculate with");
 
     opts::AggregateOptions options;
     options.add(bopts).add(tropts).add(ropts).add(topts).add(sopts);
@@ -253,25 +285,28 @@ int main(int argc, char *argv[])
     traj->readFrame(frames[0]);
     traj->updateGroupCoords(system);
 
-    AtomicGroup align_to = selectAtoms(system, ropts->value("align-selection"));
-
+    AtomicGroup align_to;
     AtomicGroup reference;
-    if ((topts->reference_filename).length() > 0)
+    if (topts->has_align)
         {
-        AtomicGroup reference_system = createSystem(topts->reference_filename);
-        reference = selectAtoms(reference_system, ropts->value("align-selection"));
-        }
-    else
-        {
-        reference = align_to.copy();
+        align_to = selectAtoms(system, topts->align_selection);
+        if ((topts->reference_filename).length() > 0)
+            {
+            AtomicGroup reference_system = createSystem(topts->reference_filename);
+            reference = selectAtoms(reference_system, topts->align_selection);
+            }
+        else
+            {
+            reference = align_to.copy();
+            }
         }
 
-    AtomicGroup apply_to = selectAtoms(system, ropts->value("target-selection"));
+    AtomicGroup apply_to = selectAtoms(system, topts->target_selection);
 
     vector<AtomicGroup> targets = sopts->split(apply_to);
     cout << "# Found " << targets.size() << " matching molecules" << endl;
 
-    // Set up storage for our property. 
+    // Set up storage for our property.
     double xmin = topts->xmin;
     double xmax = topts->xmax;
     double ymin = topts->ymin;
@@ -296,14 +331,31 @@ int main(int argc, char *argv[])
         case VECTOR:
             calculator = new CalcOrientVector(xbins, ybins);
             break;
+        case DIPOLE:
+            calculator = new CalcDipole(xbins, ybins);
+            break;
         default: // this can't happen, set in option handling
             cerr << "ERROR: unknown calculation type" << endl;
             exit(-1);
         }
 
-    // We don't want the transformation to tilt the membrane, so we'll 
-    // zero out the z coordinates before using the alignment. 
-    // We'll do the same 
+    // If we're doing dipole, we need charges
+    if (topts->type == DIPOLE)
+        {
+        // check the first atom to see if charges were set
+        if (!system[0]->checkProperty(Atom::chargebit))
+            {
+            cerr << "Dipole calculation require a model with charges"
+                 << endl;
+            cerr << "Exiting..." << endl;
+            exit(-1);
+            }
+
+        }
+
+    // We don't want the transformation to tilt the membrane, so we'll
+    // zero out the z coordinates before using the alignment.
+    // We'll do the same
     for (AtomicGroup::iterator i = reference.begin();
                                i!= reference.end();
                                ++i)
@@ -317,24 +369,26 @@ int main(int argc, char *argv[])
         traj->readFrame(frames[i]);
         traj->updateGroupCoords(system);
 
-        
-        // zero out the alignment selections z-coordinate
-        AtomicGroup align_to_flattened = align_to.copy();
-        for (AtomicGroup::iterator j = align_to_flattened.begin();
-                                   j!= align_to_flattened.end();
-                                   ++j)
+        if (topts->has_align)
             {
-            (*j)->coords().z() = 0.0;
+            // zero out the alignment selections z-coordinate
+            AtomicGroup align_to_flattened = align_to.copy();
+            for (AtomicGroup::iterator j = align_to_flattened.begin();
+                                       j!= align_to_flattened.end();
+                                       ++j)
+                {
+                (*j)->coords().z() = 0.0;
+                }
+
+
+            // get the alignment matrix
+            GMatrix M = align_to_flattened.superposition(reference);
+            M(2,2) = 1.0;    // Fix a problem caused by zapping the z-coords...
+            XForm W(M);
+
+            // align the stuff we're goign to do the calculation on
+            apply_to.applyTransform(W);
             }
-
-
-        // get the alignment matrix
-        GMatrix M = align_to_flattened.superposition(reference);
-        M(2,2) = 1.0;    // Fix a problem caused by zapping the z-coords...
-        XForm W(M);
-  
-        // align the stuff we're goign to do the calculation on
-        apply_to.applyTransform(W);
 
         // Calculate something
         uint xbin, ybin;
@@ -345,19 +399,19 @@ int main(int argc, char *argv[])
             GCoord centroid = j->centroid();
             // Skip molecules outside the xy range of interest
             if ( (centroid.x() < xmin) || (centroid.x() > xmax) ||
-                 (centroid.y() < ymin) || (centroid.y() > ymax) 
+                 (centroid.y() < ymin) || (centroid.y() > ymax)
                )
                 {
                 continue;
                 }
-            // If the user chose to look at only one leaflet, 
+            // If the user chose to look at only one leaflet,
             // skip molecules in the opposite leaflet.
             // Note: this assumes that the membrane is centered at z=0
             else if ((centroid.z() > 0) && topts->lower_only)
                 {
                 continue;
                 }
-            else if ((centroid.z() < 0) && topts->upper_only) 
+            else if ((centroid.z() < 0) && topts->upper_only)
                 {
                 continue;
                 }
