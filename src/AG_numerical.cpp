@@ -351,6 +351,15 @@ namespace loos {
           (*i)->coords() += v;
   }
 
+  std::vector<GCoord> AtomicGroup::differenceVectors(const AtomicGroup &other) {
+      uint numAtoms = size();
+      std::vector<GCoord> result;
+      for (uint i=0; i<numAtoms; ++i) {
+          result.push_back(atoms[i]->coords() - other[i]->coords());
+      }
+      return result;
+  }
+
   void AtomicGroup::applyTransform(const XForm& M) {
     iterator i;
     GMatrix W = M.current();
@@ -458,6 +467,93 @@ namespace loos {
       r *= rms;
       atoms[i]->coords() += r;
     }
+  }
+
+  greal AtomicGroup::stacking(const AtomicGroup& other,
+                              const GCoord& box,
+                              const double threshold=5.0) const {
+    GCoord c1 = centroid();
+    GCoord c2 = other.centroid();
+
+    GCoord dx = c2 - c1;
+    dx.reimage(box);
+    greal dx2 = dx.length2();
+    dx /= dx.length();
+
+    std::vector<GCoord> axes1 = principalAxes();
+    GCoord n1 = axes1[2];
+    std::vector<GCoord> axes2 = other.principalAxes();
+    GCoord n2 = axes2[2];
+
+    greal dot = n1*n2;
+    GCoord ave = 0.0;
+    if (dot < 0) {
+      ave = 0.5*(n2 - n1);
+    }
+    else {
+      ave = 0.5*(n2 + n1);
+    }
+
+    greal threshold2 = threshold * threshold;
+    greal mult = dx2/threshold2;
+    greal denom = 1 + mult*mult*mult;
+
+    greal val = dot * dot * (ave*dx) / denom;
+    return fabs(val);
+  }
+
+  std::vector<double> AtomicGroup::scattering(const double qmin, const double qmax,
+                                   const uint numValues,
+                                   loos::FormFactorSet &formFactors) {
+    const double qstep = (qmax - qmin) / numValues;
+    std::vector<double> values(numValues);
+
+    // Try pre-computing the f values to move it out of the inner loop
+    // Loop over each atom, and if it's a new element, compute and store
+    // the q values
+    std::map<uint, std::vector<double> > f_values;
+    for (uint i=0; i < size(); i++) {
+        if (f_values.count(i) == 0) {
+          std::vector<double> vals(numValues);
+          for (uint qindex=0; qindex < numValues; qindex++) {
+            double q = qmin + qindex*qstep;
+            double f1 = formFactors.get(atoms[i]->atomic_number(), q);
+            vals[qindex] = f1;
+          }
+        f_values[i] = vals;
+        }
+    }
+
+    for (uint i = 0; i < size(); i++) {
+        GCoord c1 = atoms[i]->coords();
+        for (uint j = i; j < size(); j++) {
+            if (i == j) {
+              for (uint qindex=0; qindex < numValues; qindex++) {
+                //double q = qmin + qindex*qstep;
+                //double f1 = formFactors.get(atoms[i]->atomic_number(), q);
+                double f1 = f_values[i][qindex];
+                values[qindex] += f1*f1;
+              }
+            } else {
+              GCoord diff = c1 - atoms[j]->coords();
+              double length = diff.length();
+              for (uint qindex=0; qindex < numValues; qindex++) {
+                  double q = qmin + qindex*qstep;
+                  double qd = q * length;
+                  //double f1 = formFactors.get(atoms[i]->atomic_number(), q);
+                  //double f2 = formFactors.get(atoms[j]->atomic_number(), q);
+                  double f1 = f_values[i][qindex];
+                  double f2 = f_values[j][qindex];
+                  if (qd < 1e-7) {  // trap q=0, sin(x)/x -> 1
+                    values[qindex] += f1*f2;
+                  } else {
+                    values[qindex] += f1*f2*sin(qd)/qd;
+                  }
+              }
+            }
+        }
+    }
+  return values;
   }
 
 

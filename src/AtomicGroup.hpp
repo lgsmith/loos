@@ -44,6 +44,8 @@
 #include <PeriodicBox.hpp>
 #include <utils.hpp>
 #include <Matrix.hpp>
+#include <FormFactor.hpp>
+#include <FormFactorSet.hpp>
 
 #include <exceptions.hpp>
 
@@ -609,10 +611,16 @@ namespace loos {
     greal sphericalVariance(const pAtom) const;
     greal sphericalVariance(const GCoord) const;
 
+    //! Estimate stacking, as between two nucleobases
+    /** Algorithm: n1=normal to self; n2=normal to other, dx = difference between
+               centroids
+     *         stacking = (n1*n2)^2 *[(n1 + n2)/2 * dx]/|dx| * 1/1 + (dx/threshold)^6
+     */
+     greal stacking(const AtomicGroup&, const GCoord& box, const double threshold) const;
 
     //! Compute the RMSD between two groups
-    /**Sorts both groups (if necessary), then assumes a 1:1
-     *correspondence between ith atoms.
+    /** Assumes a 1:1 correspondence between ith atoms.
+     *  Does NOT transform the coordinates in any way.
      */
     greal rmsd(const AtomicGroup&);
 
@@ -630,6 +638,12 @@ namespace loos {
      * Does not alter the group's coordinates...
      */
     std::vector<GCoord> getTransformedCoords(const XForm&) const;
+
+    //! Compute difference vectors between two AtomicGroups
+    /**
+        Does not align the coordinates first
+     */
+    std::vector<GCoord> differenceVectors(const AtomicGroup &other);
 
     //! Translate an atomic group by vector v
     void translate(const GCoord & v);
@@ -773,6 +787,12 @@ namespace loos {
      */
     GMatrix alignOnto(const AtomicGroup&);
 
+    //! Orient the principal axis of this group along the supplied vector
+    /**
+     * The supplied vector does not need to be normalized.
+     */
+    void orientAlong(const GCoord &);
+
     // Set coordinates to an array
     /**
      * This function is meant for Numpy/swig use in setting the model's
@@ -802,7 +822,7 @@ namespace loos {
 
     //* Logistic contact function between this group and another
     /**
-        Compute the number of contacts between the centroid of this AG
+        Compute the degree of contact between the centroid of this AG
         and the centroid of another AG, using a smooth logistic
         function
         S = 1/(1 + dist/radius)**sigma
@@ -812,8 +832,8 @@ namespace loos {
 
     //* Similar to logisticContact() but the distance between reference
     //  group centroid and another group centroid is 2D Euclidean distance
-    //  instead of 3D. Useful when calculating number of contacts in a 
-    //  plane
+    //  instead of 3D, ignoring the z-component. Useful when calculating
+    //  number of contacts in a plane
     /**
         Compute the number of contacts between the centroid of this AG
         and the centroid of another AG, using a smooth logistic
@@ -846,6 +866,22 @@ namespace loos {
     double hardContact2D(const AtomicGroup& group, double radius,
                            const GCoord& box) const;
 
+    //* Compute x-ray scattering intensity from this group
+    /**
+        Computes X-ray scattering as a function of q, using
+        I(q) = \sum_(atom pair) F_i(q) F_j(q) sin (q d_ij)/ (q d_ij)
+
+        This approximates scattering off of individual atoms. If you use this
+        with explicit solvent, you will get truncation artifacts from the periodic
+        box (although the code computes all distances using periodicity).
+
+        Form factors are from Szaloki, X-ray Spectrometry (1996), V25, 21-28
+
+     */
+    std::vector<double> scattering(const double qmin, const double max,
+                                   const uint numValues,
+                                   loos::FormFactorSet &formFactors);
+
   private:
 
 	// These are functors for calculating distance between two coords
@@ -869,8 +905,8 @@ namespace loos {
     };
 
 
-    // This function is to to remove code duplication in 
-    // logisticContacts() and logisticContacts2D(). 
+    // This function is to to remove code duplication in
+    // logisticContacts() and logisticContacts2D().
     // Handle even and odd powers separately -- even can
     // avoid the sqrt
     // Sigh, this doesnt' seem to make it much faster...
