@@ -8,7 +8,10 @@ glucose_h1 = loos.selectAtoms(sys, 'name == "H1" && resname == "0GA"')
 fructose_h11 = loos.selectAtoms(sys, 'name == "H11" && resname == "2CU"')
 fructose_h12 = loos.selectAtoms(sys, 'name == "H12" && resname == "2CU"')
 dists = []
-for frame in trj:
-    d1 = glucose_h1.dist(fructose_h11)
-    d2 = glucose_h1.dist(fructose_h12)
-    print(d1, d2)
+for i, frame in enumerate(trj):
+    d1 = np.linalg.norm(glucose_h1.getCoords() - fructose_h11.getCoords())
+    d2 = np.linalg.norm(glucose_h1.getCoords() - fructose_h12.getCoords())
+    dists.append(np.array([i, d1, d2]))
+
+header = 'frame H1-H11 H1-H12'
+np.savetxt('chkdists.out', dists, header=header)
