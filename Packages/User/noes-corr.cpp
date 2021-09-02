@@ -81,7 +81,9 @@ public:
       ("correlation,C", po::bool_switch(&corr)->default_value(false),
        "if thrown, compute full DFT of result; Output spectral-density NOEs, spectra, and correlation functions.")
       ("initial-magnetization,M", po::value<double>(&M)->default_value(1),
-       "Initial magnetization (M_0) at t=0.");
+       "Initial magnetization (M_0) at t=0.")
+      ("relaxation-matrix,R", po::value<std::string>(&r_out)->default_value(""),
+       "file name to write relaxation matrix to. If none provided, then not written.");
       
   }
   // clang-format on
@@ -119,6 +121,7 @@ public:
   bool isa, spectral_density, corr, welch, contig;
   string ts;
   string buildup_range;
+  string r_out;
   vector<double> buildups;
   double gamma, B, f, m, M, tau, overlap, bin_width;
   int threads;
