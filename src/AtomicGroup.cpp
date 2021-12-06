@@ -221,7 +221,7 @@ namespace loos {
     return(false);
   }
 
-  std::vector<std::pair<int, int>> AtomicGroup::getBonds() const {
+  std::vector<std::pair<int, int>> AtomicGroup::getBondList(void) const {
     // should hash pairs in an unordered way, that is hash(pair(a,b)) == hash(pair(b,a))
     struct unordered_pair_hash
     {

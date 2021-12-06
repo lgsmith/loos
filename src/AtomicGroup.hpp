@@ -32,6 +32,7 @@
 #include <vector>
 #include <map>
 #include <algorithm>
+#include <utility>
 
 #include <boost/unordered_set.hpp>
 
@@ -491,7 +492,7 @@ namespace loos {
     }
     
     //! return a list of atom index pairs that correspond to all unique bonds.          
-    std::vector<std::pair<int, int>> getBonds() const;
+    std::vector<std::pair<int, int>> getBondList(void) const;
 
 
     //! Distance-based search for bonds

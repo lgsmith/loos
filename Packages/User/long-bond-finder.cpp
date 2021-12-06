@@ -1,12 +1,10 @@
 /*
-  traj_calc.cpp
+  long-bond-finder.cpp
 
-  (c) 2011 Tod D. Romo, Grossfield Lab
-           Department of Biochemistry
-           University of Rochster School of Medicine and Dentistry
+  (c) 2021 Louis Smith, Bowman Lab
+           Department of Biochemistry & Biophysics
+           Washington University School of Medicine
 
-
-  C++ template for writing a tool that performs a calculation on a trajectory
 */
 
 
@@ -42,10 +40,6 @@ using namespace loos;
 
 namespace opts = loos::OptionsFramework;
 namespace po = loos::OptionsFramework::po;
-
-
-
-
 
 // The following conditional prevents this class from appearing in the
 // Doxygen documentation for LOOS:
@@ -118,7 +112,7 @@ int main(int argc, char *argv[]) {
   AtomicGroup scope = selectAtoms(model, sopts->selection);
   pTraj traj = tropts->trajectory;
   traj->updateGroupCoords(model);
-  vector<pair<int, int>> bond_list = scope.getBonds();
+  vector<pair<int, int>> bond_list = scope.getBondList();
   double max_bond2 = topts->max_bond * topts->max_bond;
 
   // Operating in scanning mode; don't report anything except the presence of an unacceptable bond
