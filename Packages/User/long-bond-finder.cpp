@@ -95,14 +95,14 @@ std::vector<std::pair<int, int>> getBondList(AtomicGroup &g) {
         std::size_t h0 = std::hash<int>()(pair.first);
         std::size_t h1 = std::hash<int>()(pair.second);
  
-        return h0 ^ h2;
+        return h0 ^ h1;
       }
     };
 
     std::unordered_set<std::pair<int, int>, unordered_pair_hash> bond_set;
-    const_iterator ci;
+    AtomicGroup::const_iterator ci;
 
-    for (ci = atoms.begin(); ci != atoms.end(); ++ci){
+    for (ci = g.begin(); ci != g.end(); ++ci){
       std::vector<int> bonds = (*ci)->getBonds();
       int id = (*ci)->id();
       for(auto b : bonds){
@@ -139,7 +139,7 @@ int main(int argc, char *argv[]) {
   AtomicGroup scope = selectAtoms(model, sopts->selection);
   pTraj traj = tropts->trajectory;
   traj->updateGroupCoords(model);
-  vector<pair<int, int>> bond_list = scope.getBondList();
+  vector<pair<int, int>> bond_list = getBondList(scope);
   double max_bond2 = topts->max_bond * topts->max_bond;
 
   // Operating in scanning mode; don't report anything except the presence of an unacceptable bond
@@ -149,7 +149,7 @@ int main(int argc, char *argv[]) {
         traj->readFrame(frame_index);
         traj->updateGroupCoords(scope);
         for(auto b : bond_list){
-          if (scope[b.first]->coords().distance2(scope[b.second]->coords()) > max_bond2){
+          if (scope.getAtom(b.first)->coords().distance2(scope.getAtom(b.second)->coords()) > max_bond2){
             return EXIT_FAILURE;
           }
         }
