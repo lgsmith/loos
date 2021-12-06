@@ -34,6 +34,9 @@
 
 #include <loos.hpp>
 #include <iostream>
+#include <vector>
+#include <utility>
+#include <unordered_set>
 
 using namespace std;
 using namespace loos;
@@ -84,7 +87,31 @@ const string msg =
 "XXX";
 // clang-format on
 
+std::vector<std::pair<int, int>> getBondList(AtomicGroup &g) {
+    // should hash pairs in an unordered way, that is hash(pair(a,b)) == hash(pair(b,a))
+    struct unordered_pair_hash
+    {
+      std::size_t operator () (std::pair<int, int> const &pair) const {
+        std::size_t h0 = std::hash<int>()(pair.first);
+        std::size_t h1 = std::hash<int>()(pair.second);
+ 
+        return h0 ^ h2;
+      }
+    };
 
+    std::unordered_set<std::pair<int, int>, unordered_pair_hash> bond_set;
+    const_iterator ci;
+
+    for (ci = atoms.begin(); ci != atoms.end(); ++ci){
+      std::vector<int> bonds = (*ci)->getBonds();
+      int id = (*ci)->id();
+      for(auto b : bonds){
+        bond_set.emplace(std::make_pair(id, b));
+      }
+    }
+    std::vector<std::pair<int, int>> bond_list(bond_set.begin(), bond_set.end());
+    return bond_list;
+  }
 
 int main(int argc, char *argv[]) {
   
