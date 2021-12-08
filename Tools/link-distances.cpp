@@ -51,7 +51,7 @@ const string fullHelpMessage =
 "EXAMPLES \n"
 " \n"
 "The following most simple example will draw link-vectors between adjacent \n"
-"residues in the scope that contain either a "CA" or a "P". So if model.psf has \n"
+"residues in the scope that contain either a 'CA' or a 'P'. So if model.psf has \n"
 "a protein only within it, the following will write all the CA distances to \n"
 "file. \n"
 " \n"
@@ -75,11 +75,11 @@ const string fullHelpMessage =
 "something like use a regex to select every nitrogen (they'd be disjoint in most\n"
 " biophysically relevant systems) then track the distances between each \n"
 "consecutive pair of nitrogens across the entire structure. If one does that, \n"
-"doing some work with model-select or pyloos to ensure that the subselection is \n"
+"doing some work with model-select or PyLOOS to ensure that the subselection is \n"
 "getting you what you want is likely a good idea. \n"
 " \n"
 "Also, in regard to inferring connectivity, this has been mentioned elsewhere \n"
-"but chosing to use a model without connectivity and inferring it in this crude \n"
+"but choosing to use a model without connectivity and inferring it in this crude \n"
 "way can produce surprising results if you're not pretty sure of what's \n"
 "happening with your system. For example, if the _first_ frame of your \n"
 "trajectory has extremely distorted bonds for some reason, you could introduce \n"
@@ -87,7 +87,6 @@ const string fullHelpMessage =
 "provided by this tool. Depending on how generous with the margin you are, and \n"
 "what kind of distortions or hydrogen bonds the first structure contains, you \n"
 "could also accidentally introduce connectivity where none should exist. \n"
-
 ;
 // clang-format on
 
