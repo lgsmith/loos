@@ -107,11 +107,12 @@ else:
     target = loos.selectAtoms(system, args.selection)
 
 residues = target.splitByResidue()
+
 # now remove the backbone -- doing before the split loses the glycines
 if args.no_backbone:
     residues = list([loos.selectAtoms(r, "!backbone") for r in residues])
 
-frac_contacts = numpy.zeros([len(residues), len(residues), num_trajs],
+frac_contacts = numpy.zeros([len(target), len(residues), num_trajs],
                             numpy.float64)
 
 
