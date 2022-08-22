@@ -855,8 +855,11 @@ namespace loos {
         function
         S = 1/(1 + dist/radius)**sigma
      */
-    double logisticContact(const AtomicGroup& group, double radius,
+    greal logisticContact(const AtomicGroup& group, double radius,
                            int sigma, const GCoord& box) const;
+    greal logisticContact(const AtomicGroup& group, double radius,
+                           int sigma) const;
+
 
     //* Similar to logisticContact() but the distance between reference
     //  group centroid and another group centroid is 2D Euclidean distance
@@ -878,8 +881,11 @@ namespace loos {
         function
         S = 1; iff dist <= radius; else 0
      */
+    double hardContact(const AtomicGroup& group, double radius) const;
     double hardContact(const AtomicGroup& group, double radius,
                            const GCoord& box) const;
+
+
 
     //* Similar to hardContact() but the distance between reference
     //  group centroid and another group centroid is 2D Euclidean distance
@@ -960,6 +966,27 @@ namespace loos {
         return(sum);
     }
 
+    // duplicated to allow no-box overload.
+    double logisticFunc(const GCoord& cent, const GCoord& other, double radius, int sigma) const{ double prod;
+        if (sigma % 2 == 0) {
+            double distance2 = cent.distance2(other);
+            double ratio = distance2/(radius*radius);
+            prod = ratio;
+            for (int j=0; j<(sigma/2)-1; ++j) {
+                prod *= ratio;
+            }
+        }
+        else {
+            double distance = cent.distance(other);
+            double ratio = distance/radius;
+            prod = ratio;
+            for (int j=0; j < sigma-1; ++j) {
+                prod *= ratio;
+            }
+        }
+        double sum = 1./(1. + prod);
+        return(sum);
+    }
 
     // Find all atoms in the current group that are within dist
     // angstroms of any atom in the passed group.  The distance
