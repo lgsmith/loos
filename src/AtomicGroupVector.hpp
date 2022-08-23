@@ -24,7 +24,8 @@
   You should have received a copy of the GNU General Public License
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-
+#if !defined(AG_VEC)
+#define AG_VEC
 #include <AtomicGroup.hpp>
 #include <vector>
 
@@ -32,12 +33,12 @@ namespace loos {
 
 // Applies 'hardContact' to each of the elements in contacted vs
 // each of the elements in contactor.
-std::vector<uint>
+std::vector<int>
 hardContactHistogram(const std::vector<AtomicGroup> &contacted_vec,
-                  const std::vector<AtomicGroup> &contactor_vec, greal radius,
-                  const GCoord &box) {
-  std::vector<uint> contact_hist(contacted_vec.size());
-  uint contacts;
+                     const std::vector<AtomicGroup> &contactor_vec,
+                     greal radius, const GCoord &box) {
+  std::vector<int> contact_hist(contacted_vec.size());
+  int contacts;
   for (auto contacted : contacted_vec) {
     contacts = 0;
     for (auto contactor : contactor_vec) {
@@ -52,10 +53,10 @@ hardContactHistogram(const std::vector<AtomicGroup> &contacted_vec,
 // each of the elements in contactor.
 std::vector<greal>
 logisticContactHistogram(const std::vector<AtomicGroup> &contacted_vec,
-                        const std::vector<AtomicGroup> &contactor_vec,
-                        greal radius, int sigma, const GCoord &box) {
+                         const std::vector<AtomicGroup> &contactor_vec,
+                         greal radius, int sigma, const GCoord &box) {
   std::vector<greal> contact_hist(contacted_vec.size());
-  uint contacts;
+  int contacts;
   for (auto contacted : contacted_vec) {
     contacts = 0;
     for (auto contactor : contactor_vec) {
@@ -67,11 +68,12 @@ logisticContactHistogram(const std::vector<AtomicGroup> &contacted_vec,
 }
 
 // Applies hardContact without box info
-std::vector<uint>
+std::vector<int>
 hardContactHistogram(const std::vector<AtomicGroup> &contacted_vec,
-                  const std::vector<AtomicGroup> &contactor_vec, greal radius) {
-  std::vector<uint> contact_hist(contacted_vec.size());
-  uint contacts;
+                     const std::vector<AtomicGroup> &contactor_vec,
+                     greal radius) {
+  std::vector<int> contact_hist(contacted_vec.size());
+  int contacts;
   for (auto contacted : contacted_vec) {
     contacts = 0;
     for (auto contactor : contactor_vec) {
@@ -85,10 +87,10 @@ hardContactHistogram(const std::vector<AtomicGroup> &contacted_vec,
 // Applies logisticContact without box info
 std::vector<greal>
 logisticContactHistogram(const std::vector<AtomicGroup> &contacted_vec,
-                        const std::vector<AtomicGroup> &contactor_vec,
-                        greal radius, int sigma) {
+                         const std::vector<AtomicGroup> &contactor_vec,
+                         greal radius, int sigma) {
   std::vector<greal> contact_hist(contacted_vec.size());
-  uint contacts;
+  greal contacts;
   for (auto contacted : contacted_vec) {
     contacts = 0;
     for (auto contactor : contactor_vec) {
@@ -99,15 +101,16 @@ logisticContactHistogram(const std::vector<AtomicGroup> &contacted_vec,
   return (contact_hist);
 }
 
-// Record logistic contacts as a matrix: 
+// Record logistic contacts as a matrix:
 // (all possible contact groups)X(all contactors)
-std::vector<std::vector<greal>>
+std::vector<std::vector<int>>
 hardContactMatrix(const std::vector<AtomicGroup> &contacted_vec,
-                     const std::vector<AtomicGroup> &contactor_vec,
-                     greal radius, int sigma) {
-  std::vector<std::vector < greal> > contact_matrix(contacted_vec.size(), std::vector<greal>(contactor_vec.size())); 
+                  const std::vector<AtomicGroup> &contactor_vec, greal radius,
+                  int sigma) {
+  std::vector<std::vector<int>> contact_matrix(
+      contacted_vec.size(), std::vector<int>(contactor_vec.size()));
   for (auto contacted : contacted_vec) {
-    std::vector<greal> contacts(size(contacted_vec));
+    std::vector<int> contacts(contacted_vec.size());
     for (auto contactor : contactor_vec) {
       contacts.emplace_back(contacted.hardContact(contactor, radius));
     }
@@ -116,15 +119,16 @@ hardContactMatrix(const std::vector<AtomicGroup> &contacted_vec,
   return (contact_matrix);
 }
 
-// Record hard contacts (with box info) as a matrix: 
+// Record hard contacts (with box info) as a matrix:
 // (all possible contact groups)X(all contactors)
-std::vector<std::vector<greal>>
+std::vector<std::vector<int>>
 hardContactMatrix(const std::vector<AtomicGroup> &contacted_vec,
-                     const std::vector<AtomicGroup> &contactor_vec,
-                     greal radius, const GCoord & box) {
-  std::vector<std::vector < greal> > contact_matrix(contacted_vec.size(), std::vector<greal>(contactor_vec.size())); 
+                  const std::vector<AtomicGroup> &contactor_vec, greal radius,
+                  const GCoord &box) {
+  std::vector<std::vector<int>> contact_matrix(
+      contacted_vec.size(), std::vector<int>(contactor_vec.size()));
   for (auto contacted : contacted_vec) {
-    std::vector<greal> contacts(size(contacted_vec));
+    std::vector<int> contacts(contacted_vec.size());
     for (auto contactor : contactor_vec) {
       contacts.emplace_back(contacted.hardContact(contactor, radius, box));
     }
@@ -133,38 +137,61 @@ hardContactMatrix(const std::vector<AtomicGroup> &contacted_vec,
   return (contact_matrix);
 }
 
-// write hard contacts to a matrix: 
+// write hard contacts to a matrix:
 // (all possible contact groups)X(all contactors)
 std::vector<std::vector<greal>>
 logisticContactMatrix(const std::vector<AtomicGroup> &contacted_vec,
-                     const std::vector<AtomicGroup> &contactor_vec,
-                     greal radius, int sigma, const GCoord & box) {
-  std::vector<std::vector < greal> > contact_matrix(contacted_vec.size(), std::vector<greal>(contactor_vec.size())); 
+                      const std::vector<AtomicGroup> &contactor_vec,
+                      greal radius, int sigma, const GCoord &box) {
+  std::vector<std::vector<greal>> contact_matrix(
+      contacted_vec.size(), std::vector<greal>(contactor_vec.size()));
   for (auto contacted : contacted_vec) {
-    std::vector<greal> contacts(size(contacted_vec));
+    std::vector<greal> contacts(contacted_vec.size());
     for (auto contactor : contactor_vec) {
-      contacts.emplace_back(contacted.logisticContact(contactor, radius, sigma, box));
+      contacts.emplace_back(
+          contacted.logisticContact(contactor, radius, sigma, box));
     }
     contact_matrix.emplace_back(contacts);
   }
   return (contact_matrix);
 }
 
-// write logistic contacts to a matrix: 
+// write logistic contacts to a matrix:
 // (all possible contact groups)X(all contactors)
 std::vector<std::vector<greal>>
 logisticContactMatrix(const std::vector<AtomicGroup> &contacted_vec,
-                     const std::vector<AtomicGroup> &contactor_vec,
-                     greal radius, int sigma) {
-  std::vector<std::vector < greal> > contact_matrix(contacted_vec.size(), std::vector<greal>(contactor_vec.size())); 
+                      const std::vector<AtomicGroup> &contactor_vec,
+                      greal radius, int sigma) {
+  std::vector<std::vector<greal>> contact_matrix(
+      contacted_vec.size(), std::vector<greal>(contactor_vec.size()));
   for (auto contacted : contacted_vec) {
-    std::vector<greal> contacts(size(contacted_vec));
+    std::vector<greal> contacts(contacted_vec.size());
     for (auto contactor : contactor_vec) {
-      contacts.emplace_back(contacted.logisticContact(contactor, radius, sigma));
+      contacts.emplace_back(
+          contacted.logisticContact(contactor, radius, sigma));
     }
     contact_matrix.emplace_back(contacts);
   }
   return (contact_matrix);
 }
 
-} // namespace loos
+
+  // All this stuff is for type-uplifting in numpy
+  struct IntArr1DCan {
+    std::vector<int> data;
+    void to_numpy(int **out_buff, int *len) { *out_buff = data.data(); }
+  };
+  struct GrealArr1DCan {
+    std::vector<greal> data;
+    void to_numpy(double**out_buff, int *len) { *out_buff = data.data(); }
+  };
+  IntArr1DCan hard_contact_histogram(const std::vector<AtomicGroup> &contacted_vec,
+                              const std::vector<AtomicGroup> &contactor_vec,
+                              greal radius) {
+    IntArr1DCan can;
+    can.data = hardContactHistogram(contacted_vec, contactor_vec, radius);
+    return (can);
+  }
+
+}; // namespace loos
+#endif

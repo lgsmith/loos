@@ -94,3 +94,4 @@ namespace loos {
 %include "RnaSuite.i"
 %include "FormFactor.i"
 %include "FormFactorSet.i"
+%include "AtomicGroupVector.i"
