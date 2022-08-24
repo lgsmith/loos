@@ -179,11 +179,13 @@ logisticContactMatrix(const std::vector<AtomicGroup> &contacted_vec,
   // All this stuff is for type-uplifting in numpy
   struct IntArr1DCan {
     std::vector<int> data;
-    void to_numpy(int **out_buff, int *len) { *out_buff = data.data(); }
+    void to_numpy(int **out_buff, int *len) { *out_buff = data.data();
+    *len = data.size(); }
   };
   struct GrealArr1DCan {
     std::vector<greal> data;
-    void to_numpy(double**out_buff, int *len) { *out_buff = data.data(); }
+    void to_numpy(double**out_buff, int *len) { *out_buff = data.data();
+    *len = data.size(); }
   };
   IntArr1DCan hard_contact_histogram(const std::vector<AtomicGroup> &contacted_vec,
                               const std::vector<AtomicGroup> &contactor_vec,

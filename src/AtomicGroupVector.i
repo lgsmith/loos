@@ -21,9 +21,6 @@
 
 %include "numpy.i"
 
-%template(AtomicGroupVector) std::vector<loos::AtomicGroup>;
-%template(AtomicGroupMap)    std::map<std::string, loos::AtomicGroup>;
-
 %rename(cpp_hardContactHistogram) loos::hardContactHistogram;
 %rename(cpp_logisticContactHistogram) loos::logisticContactHistogram;
 %rename(cpp_hardContactMatrix) loos::hardContactMatrix;
@@ -54,7 +51,9 @@
 %}
 
 %apply (double** ARGOUTVIEWM_ARRAY1, int* DIM1) {(double** out_buff, int* len)};
+%apply (int** ARGOUTVIEWM_ARRAY1, int* DIM1) {(int** out_buff, int* len)};
 %apply (double** ARGOUTVIEWM_ARRAY2, int* DIM1, int* DIM2) {(double** outseq, int* m, int* n)};
+%apply (int** ARGOUTVIEWM_ARRAY2, int* DIM1, int* DIM2) {(int** outseq, int* m, int* n)};
 
 %include "AtomicGroupVector.hpp"
 
