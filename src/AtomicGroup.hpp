@@ -515,7 +515,34 @@ namespace loos {
       Distance2WithPeriodicity op(box);
       return(contactwith_private(dist, grp, min, op));
     }
-    
+
+    //! Returns a vector of bools, each of which is true if an atom of current group 
+    //! is within \a dist angstroms of \a grp. This one can be very expensive if 
+    //! there are too many atoms in either group, but can be combined with judicious 
+    //! selections, or centroid atomic groups like the returns from centrifyBy* 
+    //! methods to reduce cost. Overloaded for systems with no box.
+    /**
+     * \a min is the minimum number of pair-wise contacts required to be considered
+     * in contact
+     */
+    std::vector<bool> contactPerAtom(const double dist, const AtomicGroup& grp, const uint min=1) const {
+      Distance2WithoutPeriodicity op;
+      return(contactPerAtom_private(dist, grp, min, op));
+    }
+
+    //! Returns a vector of bools, each of which is true if an atom of current group 
+    //! is within \a dist angstroms of \a grp. This one can be very expensive if 
+    //! there are too many atoms in either group, but can be combined with judicious 
+    //! selections, or centroid atomic groups like the returns from centrifyBy* 
+    //! methods to reduce cost.
+    /**
+     * \a min is the minimum number of pair-wise contacts required to be considered
+     * in contact
+     */
+    std::vector<bool> contactPerAtom(const double dist, const AtomicGroup& grp, const GCoord& box, const uint min=1) const {
+      Distance2WithPeriodicity op(box);
+      return(contactPerAtom_private(dist, grp, min, op));
+    } 
     //! return a list of atom ID pairs that correspond to all unique bonds.          
     std::vector<std::pair<int, int>> getBondsIDs() const;
 
@@ -1011,6 +1038,30 @@ namespace loos {
       return(false);
     }
 
+    template<typename DistanceCalc>
+    std::vector<bool> contactPerAtom_private(const double dist, const AtomicGroup& grp, const uint min_contacts, const DistanceCalc& distance_function) const {
+      double dist2 = dist * dist;
+      uint ncontacts = 0;
+      // initialize output vector to be all false, of length this->size().
+      std::vector<bool> contact_list(size(), false);
+      // cache atoms from grp
+      std::vector<GCoord> contactor_coords(grp.size());
+      for (auto pAtom : grp)
+        contactor_coords.emplace_back(pAtom->coords);
+
+      for (uint j = 0; j<size(); ++j) {
+        GCoord contacted_coord = atoms[j]->coords();
+        for (auto contactor_coord : contactor_coords)
+          if (distance_function(contacted_coord, contactor_coord) <= dist2){
+            if (++ncontacts >= min_contacts)
+              contact_list[j] = true;
+              // short circuit: if we're in contact, stop already!
+              break;
+          }
+ 
+      }
+      return(contact_list);
+    }
 
 	  //! Internal implementation of find bonds.
 	  /**
