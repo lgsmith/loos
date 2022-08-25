@@ -910,6 +910,13 @@ namespace loos {
     return(part_ocf / (atoms.size() - offset - 1));
   }
 
+  std::vector<GCoord> AtomicGroup::coordsToGCoordVec() const {
+    std::vector<GCoord> retvec(atoms.size());
+    for (auto at : atoms)
+      retvec.push_back(at->coords());
+    return(retvec);
+  }
+
   void AtomicGroup::reimage() {
     if (!(isPeriodic()))
       throw(LOOSError("trying to reimage a non-periodic group"));

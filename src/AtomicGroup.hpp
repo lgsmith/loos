@@ -543,6 +543,37 @@ namespace loos {
       Distance2WithPeriodicity op(box);
       return(contactPerAtom_private(dist, grp, min, op));
     } 
+
+    //! Returns a vector of bools, each of which is true if an atom of current group 
+    //! is within \a dist angstroms of \a grp. This one can be very expensive if 
+    //! there are too many atoms in either group, but can be combined with judicious 
+    //! selections, or centroid atomic groups like the returns from centrifyBy* 
+    //! methods to reduce cost. Overloaded for systems with no box.
+    /**
+     * \a min is the minimum number of pair-wise contacts required to be considered
+     * in contact
+     */
+    std::vector<bool> contactPerAtom(const double dist, const std::vector<GCoord>& crds, const uint min=1) const {
+      Distance2WithoutPeriodicity op;
+      return(contactPerAtom_private(dist, crds, min, op));
+    }
+
+    //! Returns a vector of bools, each of which is true if an atom of current group 
+    //! is within \a dist angstroms of \a grp. This one can be very expensive if 
+    //! there are too many atoms in either group, but can be combined with judicious 
+    //! selections, or centroid atomic groups like the returns from centrifyBy* 
+    //! methods to reduce cost.
+    /**
+     * \a min is the minimum number of pair-wise contacts required to be considered
+     * in contact
+     */
+    std::vector<bool> contactPerAtom(const double dist, const std::vector<GCoord>& grp, const GCoord& box, const uint min=1) const {
+      Distance2WithPeriodicity op(box);
+      return(contactPerAtom_private(dist, grp, min, op));
+    } 
+
+
+
     //! return a list of atom ID pairs that correspond to all unique bonds.          
     std::vector<std::pair<int, int>> getBondsIDs() const;
 
@@ -865,6 +896,9 @@ namespace loos {
 
     std::vector<double> coordsAsVector() const;
 
+    //! Return coords as vector of GCoords:
+    std::vector<GCoord> coordsToGCoordVec(void) const;
+
     // Compute the packing score between 2 AtomicGroups
     /**
      * The packing score is the sum of 1/r^6 over all pairs of atoms,
@@ -1051,14 +1085,38 @@ namespace loos {
 
       for (uint j = 0; j<size(); ++j) {
         GCoord contacted_coord = atoms[j]->coords();
-        for (auto contactor_coord : contactor_coords)
+        for (auto contactor_coord : contactor_coords){
           if (distance_function(contacted_coord, contactor_coord) <= dist2){
-            if (++ncontacts >= min_contacts)
+            if (++ncontacts >= min_contacts){
               contact_list[j] = true;
               // short circuit: if we're in contact, stop already!
               break;
+            }
           }
- 
+        }
+      }
+      return(contact_list);
+    }
+
+    // overloaded to work with precomputed coords.
+    template<typename DistanceCalc>
+    std::vector<bool> contactPerAtom_private(const double dist, const std::vector<GCoord>& contactor_coords, const uint min_contacts, const DistanceCalc& distance_function) const {
+      double dist2 = dist * dist;
+      uint ncontacts = 0;
+      // initialize output vector to be all false, of length this->size().
+      std::vector<bool> contact_list(size(), false);
+
+      for (uint j = 0; j<size(); ++j) {
+        GCoord contacted_coord = atoms[j]->coords();
+        for (auto contactor_coord : contactor_coords){
+          if (distance_function(contacted_coord, contactor_coord) <= dist2){
+            if (++ncontacts >= min_contacts){
+              contact_list[j] = true;
+              // short circuit: if we're in contact, stop already!
+              break;
+            }
+          }
+        }
       }
       return(contact_list);
     }
