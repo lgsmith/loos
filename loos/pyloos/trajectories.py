@@ -81,9 +81,16 @@ class Trajectory(object):
         if 'iterator' in kwargs:
             self._iterator = kwargs['iterator']
         if 'subset' in kwargs:
-            self._subset = loos.selectAtoms(model, kwargs['subset'])
-        else:
-            self._subset = model
+            subset = kwargs['subset']
+            if isinstance(subset, loos.AtomicGroup):
+                if model.contains(subset):
+                    self._subset = subset
+                else:
+                    raise loos.LOOSError('Provided subset is an AtomicGroup, but is not a subset of provided model.')
+            elif isinstance(subset, str):
+                self._subset = loos.selectAtoms(model, kwargs['subset'])
+            else:
+                raise loos.LOOSError('Provided subset is neither a string for atomic group selection, nor is it an AtomicGroup.'
 
         self._model = model
         self._fname = fname

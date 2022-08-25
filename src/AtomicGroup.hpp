@@ -1047,7 +1047,7 @@ namespace loos {
       // cache atoms from grp
       std::vector<GCoord> contactor_coords(grp.size());
       for (auto pAtom : grp)
-        contactor_coords.emplace_back(pAtom->coords);
+        contactor_coords.emplace_back(pAtom->coords());
 
       for (uint j = 0; j<size(); ++j) {
         GCoord contacted_coord = atoms[j]->coords();
