@@ -517,8 +517,8 @@ namespace loos {
     }
 
     //! Returns a vector of bools, each of which is true if an atom of current group 
-    //! is within \a dist angstroms of \a grp. This one can be very expensive if 
-    //! there are too many atoms in either group, but can be combined with judicious 
+    //! is within \a dist angstroms of \a grp. This one can be expensive if 
+    //! there are many atoms in either group, but combined with judicious 
     //! selections, or centroid atomic groups like the returns from centrifyBy* 
     //! methods to reduce cost. Overloaded for systems with no box.
     /**
@@ -530,103 +530,73 @@ namespace loos {
       return(contactPerAtom_private(dist, grp, min, op));
     }
 
-    //! Returns a vector of bools, each of which is true if an atom of current group 
-    //! is within \a dist angstroms of \a grp. This one can be very expensive if 
-    //! there are too many atoms in either group, but can be combined with judicious 
-    //! selections, or centroid atomic groups like the returns from centrifyBy* 
-    //! methods to reduce cost.
-    /**
-     * \a min is the minimum number of pair-wise contacts required to be considered
-     * in contact
-     */
+    //! Overload of previous function to account for periodic box
     std::vector<bool> contactPerAtom(const double dist, const AtomicGroup& grp, const GCoord& box, const uint min=1) const {
       Distance2WithPeriodicity op(box);
       return(contactPerAtom_private(dist, grp, min, op));
     } 
 
-    //! Returns a vector of bools, each of which is true if an atom of current group 
-    //! is within \a dist angstroms of \a grp. This one can be very expensive if 
-    //! there are too many atoms in either group, but can be combined with judicious 
-    //! selections, or centroid atomic groups like the returns from centrifyBy* 
-    //! methods to reduce cost. Overloaded for systems with no box.
-    /**
-     * \a min is the minimum number of pair-wise contacts required to be considered
-     * in contact
-     */
+    //! Overloaded to allow use with vector of Coords.
     std::vector<bool> contactPerAtom(const double dist, const std::vector<GCoord>& crds, const uint min=1) const {
       Distance2WithoutPeriodicity op;
       return(contactPerAtom_private(dist, crds, min, op));
     }
 
-    //! Returns a vector of bools, each of which is true if an atom of current group 
-    //! is within \a dist angstroms of \a grp. This one can be very expensive if 
-    //! there are too many atoms in either group, but can be combined with judicious 
-    //! selections, or centroid atomic groups like the returns from centrifyBy* 
-    //! methods to reduce cost.
-    /**
-     * \a min is the minimum number of pair-wise contacts required to be considered
-     * in contact
-     */
+    //! Overload of previous to account for box periodicity. 
     std::vector<bool> contactPerAtom(const double dist, const std::vector<GCoord>& crds, const GCoord& box, const uint min=1) const {
       Distance2WithPeriodicity op(box);
       return(contactPerAtom_private(dist, crds, min, op));
     } 
 
 
-    //! Returns a vector of bools, each of which is true if an atom of current group 
-    //! is within \a dist angstroms of \a grp. This one can be very expensive if 
-    //! there are too many atoms in either group, but can be combined with judicious 
+    //! Returns a vector of uints tallying the number of coords
+    //! within \a dist angstroms of \a grp. This can be expensive if 
+    //! there are too many atoms in either group, but using with judicious 
     //! selections, or centroid atomic groups like the returns from centrifyBy* 
-    //! methods to reduce cost. Overloaded for systems with no box.
-    /**
-     * \a min is the minimum number of pair-wise contacts required to be considered
-     * in contact
-     */
+    //! methods can reduce cost. Overloaded for systems with no box.
     std::vector<uint> countContactsPerAtom(const double dist, const std::vector<GCoord>& crds) const {
       Distance2WithoutPeriodicity op;
       return(countContactsPerAtom_private(dist, crds, op));
     }
 
-    //! Returns a vector of bools, each of which is true if an atom of current group 
-    //! is within \a dist angstroms of \a grp. This one can be very expensive if 
-    //! there are too many atoms in either group, but can be combined with judicious 
-    //! selections, or centroid atomic groups like the returns from centrifyBy* 
-    //! methods to reduce cost.
-    /**
-     * \a min is the minimum number of pair-wise contacts required to be considered
-     * in contact
-     */
+    //! Overload for system with periodic box. 
     std::vector<uint> countContactsPerAtom(const double dist, const std::vector<GCoord>& crds, const GCoord& box) const {
       Distance2WithPeriodicity op(box);
       return(countContactsPerAtom_private(dist, crds, op));
     } 
 
-    //! Returns a vector of bools, each of which is true if an atom of current group 
-    //! is within \a dist angstroms of \a grp. This one can be very expensive if 
-    //! there are too many atoms in either group, but can be combined with judicious 
-    //! selections, or centroid atomic groups like the returns from centrifyBy* 
-    //! methods to reduce cost. Overloaded for systems with no box.
-    /**
-     * \a min is the minimum number of pair-wise contacts required to be considered
-     * in contact
-     */
+    //! Overload for use with an atomic group instead of Coord vector. 
     std::vector<uint> countContactsPerAtom(const double dist, const AtomicGroup& grp) const {
       Distance2WithoutPeriodicity op;
       return(countContactsPerAtom_private(dist, grp, op));
     }
 
-    //! Returns a vector of bools, each of which is true if an atom of current group 
-    //! is within \a dist angstroms of \a grp. This one can be very expensive if 
-    //! there are too many atoms in either group, but can be combined with judicious 
-    //! selections, or centroid atomic groups like the returns from centrifyBy* 
-    //! methods to reduce cost.
-    /**
-     * \a min is the minimum number of pair-wise contacts required to be considered
-     * in contact
-     */
+    //! Overload for use with atomic group vector and box info. 
     std::vector<uint> countContactsPerAtom(const double dist, const AtomicGroup& grp, const GCoord& box) const {
       Distance2WithPeriodicity op(box);
       return(countContactsPerAtom_private(dist, grp, op));
+    } 
+
+    //! Returns a tally of number of contacts with provided AtomicGroup.
+    uint totalContacts(const double dist, const AtomicGroup& grp) const {
+      Distance2WithoutPeriodicity op;
+      return(totalContacts_private(dist, grp, op));
+    }
+    //! Returns a tally respecting box periodicity
+    uint totalContacts(const double dist, const AtomicGroup& grp, GCoord& box) const {
+      Distance2WithPeriodicity op(box);
+      return(totalContacts_private(dist, grp, op));
+    }
+
+    //! returns a tally of number of contacts with provided GCoords
+    uint totalContacts(const double dist, const std::vector<GCoord>& crds) const {
+      Distance2WithoutPeriodicity op;
+      return(totalContacts_private(dist, crds, op));
+    }
+    //! returns a tally from input GCoords respecting box periodicity.
+    uint totalContacts(const double dist, const std::vector<GCoord>& crds, const GCoord& box) const {
+      Distance2WithPeriodicity op(box);
+      return(totalContacts_private(dist, crds, op));
     } 
 
     //! return a list of atom ID pairs that correspond to all unique bonds.          
@@ -1216,6 +1186,42 @@ namespace loos {
         }
       }
       return(contact_list);
+    }
+
+    // total contacts, for accumulating across AG
+    template<typename DistanceCalc>
+    uint totalContacts_private(const double dist, const std::vector<GCoord>& contactor_coords, const DistanceCalc& distance_function) const {
+      double dist2 = dist*dist;
+      uint total = 0;
+      for (uint j = 0; j<size(); ++j) {
+        GCoord contacted_coord = atoms[j]->coords();
+        for (auto contactor_coord : contactor_coords){
+          if (distance_function(contacted_coord, contactor_coord) <= dist2){
+            total++;
+          }
+        }
+      }
+      return(total);
+    }
+    // overloaded to also work on a passed atomic group.
+    template<typename DistanceCalc>
+    uint totalContacts_private(const double dist, const AtomicGroup& grp, const DistanceCalc& distance_function) const {
+      double dist2 = dist * dist;
+      uint total = 0;
+      // cache atoms from grp
+      std::vector<GCoord> contactor_coords(grp.size());
+      for (auto pAtom : grp)
+        contactor_coords.emplace_back(pAtom->coords());
+
+      for (uint j = 0; j<size(); ++j) {
+        GCoord contacted_coord = atoms[j]->coords();
+        for (auto contactor_coord : contactor_coords){
+          if (distance_function(contacted_coord, contactor_coord) <= dist2){
+              total++;
+          }
+        }
+      }
+      return(total);
     }
 
 	  //! Internal implementation of find bonds.

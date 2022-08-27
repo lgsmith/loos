@@ -205,6 +205,4 @@ namespace loos {
 
 %template(AtomicGroupVector) std::vector<loos::AtomicGroup>;
 %template(AtomicGroupMap)    std::map<std::string, loos::AtomicGroup>;
-%template(GCoordVector)      std::vector<loos::GCoord>;
 %template(BoolVector)        std::vector<bool>;
-%template(UIntVector)        std::vector<uint>;
