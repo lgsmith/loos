@@ -10,6 +10,7 @@ set(loos_hdr_files
   Atom.hpp
   AtomicGroup.hpp
   AtomicNumberDeducer.hpp
+  AGVContactCounter.hpp
   Coord.hpp
   Fmt.hpp
   FormFactor.hpp
@@ -93,6 +94,7 @@ set(loos_src_files
   Atom.cpp
   AtomicGroup.cpp
   AtomicNumberDeducer.cpp
+  AGVContactCounter.cpp
   Fmt.cpp
   FormFactor.cpp
   FormFactorSet.cpp
