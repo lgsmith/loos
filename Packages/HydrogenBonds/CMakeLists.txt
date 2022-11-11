@@ -13,3 +13,5 @@ target_link_libraries(hmatrix loos)
 add_executable(hcontacts hcontacts.cpp hcore.cpp)
 target_link_libraries(hcontacts loos)
 
+add_executable(hcontacts-vs-contacts hcontacts-vs-contacts.cpp hcore.cpp)
+target_link_libraries(hcontacts-vs-contacts loos)
