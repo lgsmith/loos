@@ -7,7 +7,7 @@ include(CheckTypeSize)
 
 project(
   LOOS
-  VERSION 4.0
+  VERSION 4.0.3
   DESCRIPTION "The Lightweight Object Oriented Structural analysis library/toolkit"
   )
 
@@ -38,6 +38,7 @@ endif()
 find_package(NetCDF REQUIRED)
 include_directories(${NetCDF_INCLUDE_DIRS})
 
+set(BLA_VENDOR OpenBLAS)
 find_package(BLAS REQUIRED)
 find_package(LAPACK REQUIRED)
 
