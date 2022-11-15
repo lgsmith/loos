@@ -163,6 +163,8 @@ namespace loos
 
     typedef pair<SimpleAtom, SimpleAtom> Bond;
     typedef vector<Bond> vBond;
+    // different from BondMatrix because it can be ragged.
+    typedef vector<vector<Bond>> vvBond;
 
     // Given a vector of molecules, apply selection to each return a vector of subsets
     vGroup

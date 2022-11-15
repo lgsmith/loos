@@ -40,19 +40,8 @@ namespace po = boost::program_options;
 namespace opts = loos::OptionsFramework;
 
 
-typedef vector<AtomicGroup>          vGroup;
-
-typedef pair<SimpleAtom, SimpleAtom>   Bond;
-typedef vector<Bond>                  vBond;
 
 
-bool inter_bonds, intra_bonds;
-double putative_threshold;
-
-double length_low, length_high, max_angle;
-bool use_periodicity;
-string donor_selection, acceptor_selection;
-string model_name, traj_name;
 
 // @cond TOOLS_INTERNAL
 
@@ -166,104 +155,18 @@ public:
 
     return(oss.str());
   }
+  bool inter_bonds, intra_bonds;
+  hreal putative_threshold;
+
+  hreal length_low, length_high, max_angle;
+  bool use_periodicity;
+  string donor_selection, acceptor_selection;
+  string model_name, traj_name;
 
 };
 
 
 // @endcond
-
-
-
-
-// Given a vector of molecules, apply selection to each return a vector of subsets
-
-vGroup splitSelection(const vGroup& molecules, const string& selection) {
-  vGroup results;
- 
-  for (vGroup::const_iterator i = molecules.begin(); i != molecules.end(); ++i) {
-    AtomicGroup subset;
-    try {
-      subset = selectAtoms(*i, selection);
-    }
-    catch (...) {     // Ignore exceptions
-      ;
-    }
-    if (!subset.empty())
-      results.push_back(subset);
-  }
-
-  
-  if (results.empty()) {
-    cerr << "Error- The selection '" << selection << "' resulted in nothing being selected.\n";
-    exit(-1);
-  }
-   
-  return(results);
-}
-
-
-
-
-
-// Build up a vector of Bonds by looking for any donor/acceptor pair that's within a threshold
-// distance
-
-vBond findPotentialBonds(const AtomicGroup& donors, const AtomicGroup& acceptors, const AtomicGroup& system) {
-  vBond bonds;
-
-  for (AtomicGroup::const_iterator j = donors.begin(); j != donors.end(); ++j) {
-    GCoord u = (*j)->coords();
-    for (AtomicGroup::const_iterator i = acceptors.begin(); i != acceptors.end(); ++i) {
-      if (u.distance((*i)->coords()) <= putative_threshold) {
-
-        // Manually build simple atoms
-        SimpleAtom new_donor(*j, system.sharedPeriodicBox(), use_periodicity);
-        string name = (*j)->name();
-        if (name[0] != 'H') {
-          cerr << boost::format("Error- atom %s was given as a donor, but donors can only be hydrogens.\n") % name;
-          exit(-10);
-        }
-        
-        vector<int> bond_list = (*j)->getBonds();
-        if (bond_list.size() != 1) {
-          cerr << "Error- The following hydrogen atom has more than one bond to it...woops...\n";
-          cerr << *j;
-          exit(-10);
-        }
-
-        pAtom pa = system.findById(bond_list[0]);
-        if (pa == 0) {
-          cerr << boost::format("Error- cannot find atomid %d in system.\n") % bond_list[0];
-          exit(-10);
-        }
-        new_donor.attach(pa);
-
-        
-        SimpleAtom new_acceptor(*i, system.sharedPeriodicBox(), use_periodicity);
-        
-        Bond new_bond(new_donor, new_acceptor);
-        bonds.push_back(new_bond);
-      }
-    }
-  }
-  
-  return(bonds);
-}
-
-
-
-
-ostringstream& formatBond(ostringstream& oss, const uint i, const Bond& bond) {
-  pAtom a = bond.first.rawAtom();
-  pAtom b = bond.second.rawAtom();
-
-  oss << boost::format("# %d : %d-%s-%s-%d-%s => %d-%s-%s-%d-%s")
-    % i
-    % a->id() % a->name() % a->resname() % a->resid() % a->segid()
-    % b->id() % b->name() % b->resname() % b->resid() % b->segid();
-
-  return(oss);
-}
 
 
 
@@ -284,7 +187,7 @@ int main(int argc, char *argv[]) {
   AtomicGroup model = tropts->model;
   pTraj traj = tropts->trajectory;
 
-  if (use_periodicity && !traj->hasPeriodicBox()) {
+  if (topts->use_periodicity && !traj->hasPeriodicBox()) {
     cerr << "Error- trajectory has no periodic box information\n";
     exit(-1);
   }
@@ -304,23 +207,23 @@ int main(int argc, char *argv[]) {
   vGroup mols = model.splitByMolecule();
 
   // First, build list of pairs we will search for...
-  vGroup raw_donors = splitSelection(mols, donor_selection);
-  vGroup raw_acceptors = splitSelection(mols, acceptor_selection);
+  vGroup raw_donors = splitSelection(mols, topts->donor_selection);
+  vGroup raw_acceptors = splitSelection(mols, topts->acceptor_selection);
 
   vBond bond_list;
 
   for (uint j=0; j<raw_donors.size(); ++j) {
 
-    if (intra_bonds) {
-      vBond bonds = findPotentialBonds(raw_donors[j], raw_acceptors[j], model);
+    if (topts->intra_bonds) {
+      vBond bonds = findPotentialBonds(raw_donors[j], raw_acceptors[j], model, topts->putative_threshold);
       copy(bonds.begin(), bonds.end(), back_inserter(bond_list));
     }
 
-    if (inter_bonds) {
+    if (topts->inter_bonds) {
       for (uint i=0; i<raw_acceptors.size(); ++i) {
         if (j == i)
           continue;
-        vBond bonds = findPotentialBonds(raw_donors[j], raw_acceptors[i], model);
+        vBond bonds = findPotentialBonds(raw_donors[j], raw_acceptors[i], model, topts->putative_threshold);
         copy(bonds.begin(), bonds.end(), back_inserter(bond_list));
       }
     }

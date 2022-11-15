@@ -29,6 +29,7 @@
 #include <loos.hpp>
 #include <boost/format.hpp>
 #include <boost/program_options.hpp>
+#include <fstream>
 
 #include "hcore.hpp"
 
@@ -37,15 +38,6 @@ using namespace loos;
 using namespace HBonds;
 namespace po = boost::program_options;
 namespace opts = loos::OptionsFramework;
-
-bool inter_bonds, intra_bonds;
-hreal putative_threshold;
-hreal contact_threshold;
-
-hreal length_low, length_high, max_angle;
-bool use_periodicity;
-string donor_selection, acceptor_selection;
-string model_name, traj_name;
 
 // @cond TOOLS_INTERNAL
 
@@ -60,49 +52,63 @@ public:
   // clang-format off
   void addGeneric(po::options_description& o) {
     o.add_options()
-      ("search", po::value<hreal>(&putative_threshold)->default_value(10.0), "Threshold for initial bond search")
       ("contact", po::value<hreal>(&contact_threshold)->default_value(-1), "If > 0, use for contact. Otherwise use value of 'bhi'")
       ("blow", po::value<hreal>(&length_low)->default_value(1.5), "Low cutoff for bond length")
       ("bhi", po::value<hreal>(&length_high)->default_value(3.0), "High cutoff for bond length")
       ("angle", po::value<hreal>(&max_angle)->default_value(30.0), "Max bond angle deviation from linear")
       ("periodic", po::value<bool>(&use_periodicity)->default_value(false), "Use periodic boundary")
-      ("inter", po::value<bool>(&inter_bonds)->default_value(true), "Inter-molecular bonds")
-      ("intra", po::value<bool>(&intra_bonds)->default_value(false), "Intra-molecular bonds");
+      ("polymer-donors", po::value<string>(&polymer_donor_selection)-> default_value(""), 
+      "If provided, use instead of 'donor' to select the atoms in 'polymer'")
+      ("polymer-acceptors", po::value<string>(&polymer_acceptor_selection)-> default_value(""), 
+      "If provided, use instead of 'acceptor' to select the atoms in 'polymer'");
   }
-  // clang-format on
   void addHidden(po::options_description &o)
   {
-    o.add_options()("donor", po::value<string>(&donor_selection), "donor selection")("acceptor", po::value<string>(&acceptor_selection), "acceptor selection");
+    o.add_options()
+    ("donor", po::value<string>(&donor_selection), "donor selection")
+    ("acceptor", po::value<string>(&acceptor_selection), "acceptor selection")
+    ("polymer", po::value<string>(&polymer_selection), "polymer selection")
+    ("solvent", po::value<string>(&solvent_selection), "solvent selection")
+    ("out_prefix", po::value<string>(&out_prefix), "Prefix to use to write output");
   }
+  // clang-format on
 
   void addPositional(po::positional_options_description &opts)
   {
     opts.add("donor", 1);
     opts.add("acceptor", 1);
-  }
-
-  bool check(po::variables_map &map)
-  {
-    if (!(inter_bonds || intra_bonds))
-    {
-      cerr << "Error- must specify at least some kind of bond (inter/intra) to calculate.\n";
-      return (true);
-    }
-    return (false);
+    opts.add("polymer", 1);
+    opts.add("solvent", 1);
+    opts.add("out_prefix", 1);
   }
 
   string help() const
   {
-    return ("donor-selection acceptor-selection");
+    return ("donor-selection acceptor-selection polymer-selection solvent-selection output-prefix");
   }
 
   string print() const
   {
     ostringstream oss;
-    oss << boost::format("search=%f,inter=%d,intra=%d,blow=%f,bhi=%f,angle=%f,periodic=%d,acceptor=\"%s\",donor=\"%s\"") % putative_threshold % inter_bonds % intra_bonds % length_low % length_high % max_angle % use_periodicity % acceptor_selection % donor_selection;
+    oss << boost::format("contact=%f,blow=%f,bhi=%f,angle=%f,"
+    "periodic=%d,acceptor=\"%s\",donor=\"%s\",polymer=\"%s\",solvent=\"%s\",out=\"%s\"") % 
+      contact_threshold % length_low % length_high % max_angle % use_periodicity
+       % acceptor_selection % donor_selection % polymer_selection % solvent_selection % out_prefix;
 
     return (oss.str());
   }
+  // tool options data members
+  bool inter_bonds, intra_bonds;
+
+  hreal contact_threshold;
+
+  hreal length_low, length_high, max_angle;
+  bool use_periodicity;
+  string donor_selection, acceptor_selection;
+  string polymer_selection, solvent_selection;
+  string polymer_donor_selection, polymer_acceptor_selection;
+  string model_name, traj_name;
+  string out_prefix;
 };
 
 // @endcond
@@ -123,7 +129,7 @@ int main(int argc, char *argv[])
   AtomicGroup model = mtopts->model;
   pTraj traj = mtopts->trajectory;
 
-  if (use_periodicity && !traj->hasPeriodicBox())
+  if (topts->use_periodicity && !traj->hasPeriodicBox())
   {
     cerr << "Error- trajectory has no periodic box information\n";
     exit(-1);
@@ -140,46 +146,50 @@ int main(int argc, char *argv[])
       traj->rewind();
   }
 
-  vGroup mols = model.splitByMolecule();
+  // set up for the calculations
+  AtomicGroup polymer = selectAtoms(model, topts->polymer_selection);
+  AtomicGroup solvent = selectAtoms(model, topts->solvent_selection);
+  vGroup vPoly = polymer.splitByResidue();
+  vGroup vSolv = solvent.splitByMolecule();
+  // output file streams
+  ofstream out_contatcts(topts->out_prefix + "-contacts.out");
+  ofstream out_hbs(topts->out_prefix + "-hbcounts.out");
 
-  // First, build list of pairs we will search for...
-  vGroup raw_donors = splitSelection(mols, donor_selection);
-  vGroup raw_acceptors = splitSelection(mols, acceptor_selection);
+  // contact threshold squared
+  hreal cthresh2 = topts->contact_threshold * topts->contact_threshold;
 
-  vBond bond_list;
-
-  for (uint j = 0; j < raw_donors.size(); ++j)
-  {
-
-    if (intra_bonds)
-    {
-      vBond bonds = findPotentialBonds(raw_donors[j], raw_acceptors[j], model);
-      copy(bonds.begin(), bonds.end(), back_inserter(bond_list));
-    }
-
-    if (inter_bonds)
-    {
-      for (uint i = 0; i < raw_acceptors.size(); ++i)
-      {
-        if (j == i)
-          continue;
-        vBond bonds = findPotentialBonds(raw_donors[j], raw_acceptors[i], model);
-        copy(bonds.begin(), bonds.end(), back_inserter(bond_list));
-      }
-    }
+  // Build list of HBpairs we will search for.
+  vGroup poly_donors, poly_accept;
+  if (topts->polymer_donor_selection.empty()){
+    poly_donors = splitSelection(vPoly, topts->donor_selection);
+  } else {
+    poly_donors = splitSelection(vPoly, topts->polymer_donor_selection);
   }
+  if (topts->polymer_acceptor_selection.empty()) {
+    poly_accept = splitSelection(vPoly, topts->acceptor_selection);
+  } else {
+    poly_accept = splitSelection(vPoly, topts->polymer_acceptor_selection);
+  }
+  vGroup solv_donors = splitSelection(vSolv, topts->donor_selection);
+  vGroup solv_accept = splitSelection(vSolv, topts->acceptor_selection);
+
+
+  vvBond solv_poly_list;
+
+  for (uint j = 0; j < poly_donors.size(); ++j)
+      for (uint i = 0; i < solv_accept.size(); ++i)
+        solv_poly_list.emplace_back(findPotentialBonds(poly_donors[j], solv_accept[i], model));
 
   // Generate the metadata for the output...
-  ostringstream oss;
-  oss << hdr << endl;
-  for (uint i = 0; i < bond_list.size(); ++i)
-  {
-    formatBond(oss, i + 1, bond_list[i]);
-    if (i < bond_list.size() - 1)
-      oss << endl;
+  out_contatcts << hdr << "\n";
+  out_hbs << hdr << "\n";
+  for (auto res : vPoly) {
+    out_contatcts << res[0]->resid();
+    out_hbs << res[0]->resid();
   }
 
-  loos::Math::Matrix<uint> M(traj->nframes() - mtopts->skip, bond_list.size() + 1);
+  loos::Math::Matrix<uint> HydrogenBondCounts(mtopts->frameList().size(), solv_poly_list.size() + 1);
+  loos::Math::Matrix<uint> Contacts(mtopts->frameList().size(), solv_poly_list.size() + 1);
 
   uint j = 0;
   for (auto frame_index : mtopts->frameList())
@@ -187,12 +197,12 @@ int main(int argc, char *argv[])
     traj->readFrame(frame_index);
     traj->updateGroupCoords(model);
 
-    M(j, 0) = j + mtopts->skip;
+    HydrogenBondCounts(j, 0) = j + mtopts->skip;
     for (uint i = 0; i < bond_list.size(); ++i)
-      M(j, i + 1) = bond_list[i].first.hydrogenBond(bond_list[i].second);
+      HydrogenBondCounts(j, i + 1) = bond_list[i].first.hydrogenBond(bond_list[i].second);
 
     ++j;
   }
 
-  writeAsciiMatrix(cout, M, oss.str());
+  writeAsciiMatrix(cout, HydrogenBondCounts, oss.str());
 }
