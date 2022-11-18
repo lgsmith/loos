@@ -91,9 +91,8 @@ public:
   {
     ostringstream oss;
     oss << boost::format("contact=%f,blow=%f,bhi=%f,angle=%f,"
-    "periodic=%d,acceptor=\"%s\",donor=\"%s\",polymer=\"%s\",solvent=\"%s\",out=\"%s\"") % 
-      contact_threshold % length_low % length_high % max_angle % use_periodicity
-       % acceptor_selection % donor_selection % polymer_selection % solvent_selection % out_prefix;
+                         "periodic=%d,acceptor=\"%s\",donor=\"%s\",polymer=\"%s\",solvent=\"%s\",out=\"%s\"") %
+               contact_threshold % length_low % length_high % max_angle % use_periodicity % acceptor_selection % donor_selection % polymer_selection % solvent_selection % out_prefix;
 
     return (oss.str());
   }
@@ -151,58 +150,104 @@ int main(int argc, char *argv[])
   AtomicGroup solvent = selectAtoms(model, topts->solvent_selection);
   vGroup vPoly = polymer.splitByResidue();
   vGroup vSolv = solvent.splitByMolecule();
+  // will fill now, but refill over the course of the loop.
+  // Will be organized by residues, then by coordinates within each AG
+  vector<vector<GCoord>> poly_crds;
+  for (auto res_ix = 0; res_ix < vPoly.size(); ++res_ix)
+  {
+    poly_crds.emplace_back(vector<GCoord>(vPoly[res_ix].size(), GCoord(0, 0, 0)));
+  }
+
   // output file streams
-  ofstream out_contatcts(topts->out_prefix + "-contacts.out");
+  ofstream out_contacts(topts->out_prefix + "-contacts.out");
   ofstream out_hbs(topts->out_prefix + "-hbcounts.out");
 
   // contact threshold squared
-  hreal cthresh2 = topts->contact_threshold * topts->contact_threshold;
+  const hreal cthresh = topts->contact_threshold;
 
   // Build list of HBpairs we will search for.
   vGroup poly_donors, poly_accept;
-  if (topts->polymer_donor_selection.empty()){
+  if (topts->polymer_donor_selection.empty())
+  {
     poly_donors = splitSelection(vPoly, topts->donor_selection);
-  } else {
+  }
+  else
+  {
     poly_donors = splitSelection(vPoly, topts->polymer_donor_selection);
   }
-  if (topts->polymer_acceptor_selection.empty()) {
+  if (topts->polymer_acceptor_selection.empty())
+  {
     poly_accept = splitSelection(vPoly, topts->acceptor_selection);
-  } else {
+  }
+  else
+  {
     poly_accept = splitSelection(vPoly, topts->polymer_acceptor_selection);
   }
-  vGroup solv_donors = splitSelection(vSolv, topts->donor_selection);
-  vGroup solv_accept = splitSelection(vSolv, topts->acceptor_selection);
+  vGroup solv_donors = splitSelectionKeepEmpties(vSolv, topts->donor_selection);
+  vGroup solv_accept = splitSelectionKeepEmpties(vSolv, topts->acceptor_selection);
 
+  // This will be a vector (water indexes) of vectors (residue indexes) of vectors of bonds.
+  vvvBond sp_pothbs_bymol;
 
-  vvBond solv_poly_list;
-
-  for (uint j = 0; j < poly_donors.size(); ++j)
-      for (uint i = 0; i < solv_accept.size(); ++i)
-        solv_poly_list.emplace_back(findPotentialBonds(poly_donors[j], solv_accept[i], model));
+  for (auto j = 0; j < vSolv.size(); ++j)
+  {
+    vvBond wat_bonds;
+    for (auto i = 0; i < vPoly.size(); ++i)
+    {
+      // find all potential hbs between this solvent molecule's acceptors and the residue's donors.
+      vBond pDsA_potentials = findPotentialBonds(poly_donors[i], solv_accept[j], model);
+      // find all potential hbs between this molecule's donors and the residue's acceptors;
+      // construct directly in vector of vector of bonds.
+      wat_bonds.emplace_back(findPotentialBonds(solv_donors[j], poly_accept[i], model));
+      // Concatenate polymer-donor-solvent-acceptor bonds onto stored vector of polyer-acceptor-solvent-donor bonds.
+      wat_bonds[i].insert(wat_bonds[i].end(), pDsA_potentials.begin(), pDsA_potentials.end());
+    }
+  }
 
   // Generate the metadata for the output...
-  out_contatcts << hdr << "\n";
+  out_contacts << hdr << "\n";
   out_hbs << hdr << "\n";
-  for (auto res : vPoly) {
-    out_contatcts << res[0]->resid();
+  for (auto res : vPoly)
+  {
+    out_contacts << res[0]->resid();
     out_hbs << res[0]->resid();
   }
 
-  loos::Math::Matrix<uint> HydrogenBondCounts(mtopts->frameList().size(), solv_poly_list.size() + 1);
-  loos::Math::Matrix<uint> Contacts(mtopts->frameList().size(), solv_poly_list.size() + 1);
+  // loos Matricies initialized to zero
+  loos::Math::Matrix<uint> HydrogenBondCounts(mtopts->frameList().size(), sp_pothbs_bymol[0].size() + 1);
+  loos::Math::Matrix<uint> Contacts(mtopts->frameList().size(), sp_pothbs_bymol[0].size() + 1);
 
-  uint j = 0;
+  uint frame_count = 0;
+  uint total_contacts;
   for (auto frame_index : mtopts->frameList())
   {
     traj->readFrame(frame_index);
     traj->updateGroupCoords(model);
 
-    HydrogenBondCounts(j, 0) = j + mtopts->skip;
-    for (uint i = 0; i < bond_list.size(); ++i)
-      HydrogenBondCounts(j, i + 1) = bond_list[i].first.hydrogenBond(bond_list[i].second);
+    HydrogenBondCounts(frame_count, 0) = frame_index;
+    Contacts(frame_count, 0) = frame_index;
+    // update the polymer coord vector, for easier scanning. Inner loop is over poly residues.
+    for (auto j = 0; j < vPoly.size(); ++j)
+      for (auto i = 0; i < vPoly[j].size(); ++i)
+        poly_crds[j][i] = vPoly[j][i]->coords();
 
-    ++j;
+    for (auto solv_index = 0; solv_index < solv_donors.size(); ++solv_index)
+    {
+      for (auto res_index = 0; res_index < poly_accept.size(); ++res_index)
+      {
+        total_contacts = vSolv[solv_index].totalContacts(cthresh, poly_crds[res_index]);
+        Contacts(frame_count, res_index) = total_contacts;
+        // if the residue makes contact, then check for hydrogen bonds.
+        if (total_contacts > 0)
+        {
+          for (auto pothb : sp_pothbs_bymol[solv_index][res_index])
+            HydrogenBondCounts(frame_index, res_index) += pothb.first.hydrogenBond(pothb.second);
+        }
+      }
+    }
+    ++frame_count;
   }
 
-  writeAsciiMatrix(cout, HydrogenBondCounts, oss.str());
+  writeAsciiMatrix(out_contacts, Contacts, "polymer-solvent contact counts per residue");
+  writeAsciiMatrix(out_hbs, HydrogenBondCounts, "polymer-solvent hydrogen bond counts per residue");
 }

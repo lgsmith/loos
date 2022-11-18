@@ -165,6 +165,8 @@ namespace loos
     typedef vector<Bond> vBond;
     // different from BondMatrix because it can be ragged.
     typedef vector<vector<Bond>> vvBond;
+    // If it doesn't work in the first case, use more of it.
+    typedef vector<vector<vector<Bond>>> vvvBond;
 
     // Given a vector of molecules, apply selection to each return a vector of subsets
     vGroup
@@ -195,6 +197,29 @@ namespace loos
 
       return (results);
     }
+    vGroup
+    splitSelectionKeepEmpties(const vGroup &molecules, const string &selection)
+    {
+      vGroup results;
+
+      for (vGroup::const_iterator i = molecules.begin(); i != molecules.end(); ++i)
+      {
+        AtomicGroup subset;
+        try
+        {
+          subset = selectAtoms(*i, selection);
+        }
+        catch (...)
+        { // Ignore exceptions
+          ;
+        }
+        // Always push back, even empty AGs, as placeholders.
+        results.push_back(subset);
+      }
+
+      return (results);
+    }
+
     // Build up a vector of Bonds from the passed groups alone
     vBond findPotentialBonds(const AtomicGroup &donors, const AtomicGroup &acceptors, const AtomicGroup &system)
     {
