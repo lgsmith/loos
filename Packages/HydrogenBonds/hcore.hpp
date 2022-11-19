@@ -29,302 +29,175 @@
 
 #include <loos.hpp>
 
-namespace loos
-{
-  namespace HBonds
-  {
+namespace loos {
+namespace HBonds {
 
-    typedef loos::Math::Matrix<int, loos::Math::RowMajor> BondMatrix;
+typedef loos::Math::Matrix<int, loos::Math::RowMajor> BondMatrix;
 
-    // Our own exception so we can provide a little more helpful
-    // information when we throw-up...
+// Our own exception so we can provide a little more helpful
+// information when we throw-up...
 
-    struct ErrorWithAtom : public std::exception
-    {
-      std::string _msg;
+struct ErrorWithAtom : public std::exception {
+  std::string _msg;
 
-      ErrorWithAtom(const loos::pAtom &a, const std::string &msg)
-      {
-        std::stringstream ss;
-        ss << msg << std::endl
-           << *a << std::endl;
-        _msg = ss.str();
-      }
+  ErrorWithAtom(const loos::pAtom &a, const std::string &msg) {
+    std::stringstream ss;
+    ss << msg << std::endl << *a << std::endl;
+    _msg = ss.str();
+  }
 
-      const char *what() const throw() { return (_msg.c_str()); }
+  const char *what() const throw() { return (_msg.c_str()); }
 
-      ~ErrorWithAtom() throw() {}
-    };
+  ~ErrorWithAtom() throw() {}
+};
 
-    // Track the atoms that may participate in a hydrogen bond, and the
-    // atoms they're attached to (if necessary) to compute the bond angle.
-    // Also encapsulates the operations for determining if an h-bond
-    // exists...
-    //
-    // Note that we hook into the parent group's SharedPeriodicBox so we
-    // always have current periodic boundary info...
+// Track the atoms that may participate in a hydrogen bond, and the
+// atoms they're attached to (if necessary) to compute the bond angle.
+// Also encapsulates the operations for determining if an h-bond
+// exists...
+//
+// Note that we hook into the parent group's SharedPeriodicBox so we
+// always have current periodic boundary info...
 
-    class SimpleAtom
-    {
-    public:
-      SimpleAtom(const loos::pAtom &a) : atom(a), isHydrogen(divineHydrogen(a->name())), usePeriodicity(false) {}
-      SimpleAtom(const loos::pAtom &a, const loos::SharedPeriodicBox &b, const bool c = true) : atom(a), isHydrogen(divineHydrogen(a->name())), usePeriodicity(c), sbox(b) {}
+class SimpleAtom {
+public:
+  SimpleAtom(const loos::pAtom &a)
+      : atom(a), isHydrogen(divineHydrogen(a->name())), usePeriodicity(false) {}
+  SimpleAtom(const loos::pAtom &a, const loos::SharedPeriodicBox &b,
+             const bool c = true)
+      : atom(a), isHydrogen(divineHydrogen(a->name())), usePeriodicity(c),
+        sbox(b) {}
 
-      void attach(const loos::pAtom &a) { attached_to = a; }
-      loos::pAtom attachedTo() const { return (attached_to); }
+  void attach(const loos::pAtom &a) { attached_to = a; }
+  loos::pAtom attachedTo() const { return (attached_to); }
 
-      loos::pAtom rawAtom() const { return (atom); }
+  loos::pAtom rawAtom() const { return (atom); }
 
-      double distance2(const SimpleAtom &s) const;
-      double angle(const SimpleAtom &s) const;
+  double distance2(const SimpleAtom &s) const;
+  double angle(const SimpleAtom &s) const;
 
-      static bool debuggingMode() { return (debugging); }
-      static void debuggingMode(const bool b) { debugging = b; }
+  static bool debuggingMode() { return (debugging); }
+  static void debuggingMode(const bool b) { debugging = b; }
 
-      static double innerRadius() { return (sqrt(inner)); }
-      static void innerRadius(const double r) { inner = r * r; }
+  static double innerRadius() { return (sqrt(inner)); }
+  static void innerRadius(const double r) { inner = r * r; }
 
-      static double outerRadius() { return (sqrt(outer)); }
-      static void outerRadius(const double r) { outer = r * r; }
+  static double outerRadius() { return (sqrt(outer)); }
+  static void outerRadius(const double r) { outer = r * r; }
 
-      static double maxDeviation() { return (deviation); }
-      static void maxDeviation(const double d) { deviation = d; }
+  static double maxDeviation() { return (deviation); }
+  static void maxDeviation(const double d) { deviation = d; }
 
-      // Tests whether two SimpleAtoms have a potential hydrogen-bond
-      // between them.
-      bool hydrogenBond(const SimpleAtom &other) const;
+  // Tests whether two SimpleAtoms have a potential hydrogen-bond
+  // between them.
+  bool hydrogenBond(const SimpleAtom &other) const;
 
-      // Returns an AtomicGroup of all atoms that may have hydrogen-bonds
-      // to the current SimpleAtom
-      loos::AtomicGroup findHydrogenBonds(const std::vector<SimpleAtom> &group, const bool findFirstOnly = true);
+  // Returns an AtomicGroup of all atoms that may have hydrogen-bonds
+  // to the current SimpleAtom
+  loos::AtomicGroup findHydrogenBonds(const std::vector<SimpleAtom> &group,
+                                      const bool findFirstOnly = true);
 
-      std::vector<uint> findHydrogenBondsVector(const std::vector<SimpleAtom> &group);
+  std::vector<uint>
+  findHydrogenBondsVector(const std::vector<SimpleAtom> &group);
 
-      // Returns a matrix where the rows represent time (frames in the
-      // trajectory) and columns represent acceptors (i.e. the passed
-      // group).  Wherever there is a hydrogen-bond, U_ij is 1, and 0
-      // otherwise.
-      //
-      // maxt determines the maximum time (frame #) that is considered.
-      BondMatrix findHydrogenBondsMatrix(const std::vector<SimpleAtom> &group, loos::pTraj &traj, loos::AtomicGroup &model, const uint maxt) const;
-      BondMatrix findHydrogenBondsMatrix(const std::vector<SimpleAtom> &group, loos::pTraj &traj, loos::AtomicGroup &model) const
-      {
-        return (findHydrogenBondsMatrix(group, traj, model, traj->nframes()));
-      }
+  // Returns a matrix where the rows represent time (frames in the
+  // trajectory) and columns represent acceptors (i.e. the passed
+  // group).  Wherever there is a hydrogen-bond, U_ij is 1, and 0
+  // otherwise.
+  //
+  // maxt determines the maximum time (frame #) that is considered.
+  BondMatrix findHydrogenBondsMatrix(const std::vector<SimpleAtom> &group,
+                                     loos::pTraj &traj,
+                                     loos::AtomicGroup &model,
+                                     const uint maxt) const;
+  BondMatrix findHydrogenBondsMatrix(const std::vector<SimpleAtom> &group,
+                                     loos::pTraj &traj,
+                                     loos::AtomicGroup &model) const {
+    return (findHydrogenBondsMatrix(group, traj, model, traj->nframes()));
+  }
 
-      // Converts an AtomicGroup into a vector of SimpleAtom's based on
-      // the passed selection.  The use_periodicity is applied to all
-      // created SimpleAtoms...they also shared the PeriodicBox with the
-      // passed AtomicGroup.
+  // Converts an AtomicGroup into a vector of SimpleAtom's based on
+  // the passed selection.  The use_periodicity is applied to all
+  // created SimpleAtoms...they also shared the PeriodicBox with the
+  // passed AtomicGroup.
 
-      static std::vector<SimpleAtom> processSelection(const std::string &selection, const loos::AtomicGroup &system, const bool use_periodicity = false);
+  static std::vector<SimpleAtom>
+  processSelection(const std::string &selection,
+                   const loos::AtomicGroup &system,
+                   const bool use_periodicity = false);
 
-      friend std::ostream &operator<<(std::ostream &os, const SimpleAtom &s)
-      {
-        os << "<SimpleAtom>\n";
-        os << *(s.atom) << std::endl;
-        os << "<isHydrogen " << s.isHydrogen << "/>\n";
-        os << "<usePeriodicity " << s.usePeriodicity << "/>\n";
-        if (s.usePeriodicity)
-          os << "<PeriodicBox>" << s.sbox.box() << "</PeriodicBox>\n";
-        if (s.attached_to != 0)
-        {
-          os << "<attached>\n";
-          os << *(s.attached_to) << std::endl;
-          os << "</attached>\n";
-        }
-        os << "</SimpleAtom>";
-        return (os);
-      }
-
-    private:
-      bool divineHydrogen(const std::string &name);
-
-      loos::pAtom atom;
-      bool isHydrogen;
-      bool usePeriodicity;
-
-      static double inner, outer, deviation;
-      static bool debugging;
-
-      loos::SharedPeriodicBox sbox;
-      loos::pAtom attached_to;
-    };
-
-    // Typedefs to make life easier in the tools...
-
-    typedef SimpleAtom SAtom;
-    typedef std::vector<SAtom> SAGroup;
-
-    // toggle this comment on typedef if global greal def is desired
-    // typedef greal                         hreal;
-    typedef float hreal;
-    typedef vector<AtomicGroup> vGroup;
-
-    typedef pair<SimpleAtom, SimpleAtom> Bond;
-    typedef vector<Bond> vBond;
-    // different from BondMatrix because it can be ragged.
-    typedef vector<vector<Bond>> vvBond;
-    // If it doesn't work in the first case, use more of it.
-    typedef vector<vector<vector<Bond>>> vvvBond;
-
-    // Given a vector of molecules, apply selection to each return a vector of subsets
-    vGroup
-    splitSelection(const vGroup &molecules, const string &selection)
-    {
-      vGroup results;
-
-      for (vGroup::const_iterator i = molecules.begin(); i != molecules.end(); ++i)
-      {
-        AtomicGroup subset;
-        try
-        {
-          subset = selectAtoms(*i, selection);
-        }
-        catch (...)
-        { // Ignore exceptions
-          ;
-        }
-        if (!subset.empty())
-          results.push_back(subset);
-      }
-
-      if (results.empty())
-      {
-        cerr << "Error- The selection '" << selection << "' resulted in nothing being selected.\n";
-        exit(-1);
-      }
-
-      return (results);
+  friend std::ostream &operator<<(std::ostream &os, const SimpleAtom &s) {
+    os << "<SimpleAtom>\n";
+    os << *(s.atom) << std::endl;
+    os << "<isHydrogen " << s.isHydrogen << "/>\n";
+    os << "<usePeriodicity " << s.usePeriodicity << "/>\n";
+    if (s.usePeriodicity)
+      os << "<PeriodicBox>" << s.sbox.box() << "</PeriodicBox>\n";
+    if (s.attached_to != 0) {
+      os << "<attached>\n";
+      os << *(s.attached_to) << std::endl;
+      os << "</attached>\n";
     }
-    vGroup
-    splitSelectionKeepEmpties(const vGroup &molecules, const string &selection)
-    {
-      vGroup results;
+    os << "</SimpleAtom>";
+    return (os);
+  }
 
-      for (vGroup::const_iterator i = molecules.begin(); i != molecules.end(); ++i)
-      {
-        AtomicGroup subset;
-        try
-        {
-          subset = selectAtoms(*i, selection);
-        }
-        catch (...)
-        { // Ignore exceptions
-          ;
-        }
-        // Always push back, even empty AGs, as placeholders.
-        results.push_back(subset);
-      }
+private:
+  bool divineHydrogen(const std::string &name);
 
-      return (results);
-    }
+  loos::pAtom atom;
+  bool isHydrogen;
+  bool usePeriodicity;
 
-    // Build up a vector of Bonds from the passed groups alone
-    vBond findPotentialBonds(const AtomicGroup &donors, const AtomicGroup &acceptors, const AtomicGroup &system)
-    {
-      vBond bonds;
+  static double inner, outer, deviation;
+  static bool debugging;
 
-      for (AtomicGroup::const_iterator j = donors.begin(); j != donors.end(); ++j)
-      {
-        GCoord u = (*j)->coords();
-        for (AtomicGroup::const_iterator i = acceptors.begin(); i != acceptors.end(); ++i)
-        {
-          // Manually build simple atoms
-          SimpleAtom new_donor(*j, system.sharedPeriodicBox(), use_periodicity);
-          string name = (*j)->name();
-          if (name[0] != 'H')
-          {
-            cerr << boost::format("Error- atom %s was given as a donor, but donors can only be hydrogens.\n") % name;
-            exit(-10);
-          }
+  loos::SharedPeriodicBox sbox;
+  loos::pAtom attached_to;
+};
 
-          vector<int> bond_list = (*j)->getBonds();
-          if (bond_list.size() != 1)
-          {
-            cerr << "Error- The following hydrogen atom has more than one bond to it...woops...\n";
-            cerr << *j;
-            exit(-10);
-          }
+// Typedefs to make life easier in the tools...
 
-          pAtom pa = system.findById(bond_list[0]);
-          if (pa == 0)
-          {
-            cerr << boost::format("Error- cannot find atomid %d in system.\n") % bond_list[0];
-            exit(-10);
-          }
-          new_donor.attach(pa);
+typedef SimpleAtom SAtom;
+typedef std::vector<SAtom> SAGroup;
 
-          SimpleAtom new_acceptor(*i, system.sharedPeriodicBox(), use_periodicity);
+// toggle this comment on typedef if global greal def is desired
+// typedef greal                         hreal;
+typedef float hreal;
+typedef std::vector<AtomicGroup> vGroup;
 
-          Bond new_bond(new_donor, new_acceptor);
-          bonds.push_back(new_bond);
-        }
-      }
+typedef std::pair<SimpleAtom, SimpleAtom> Bond;
+typedef std::vector<Bond> vBond;
+// different from BondMatrix because it can be ragged.
+typedef std::vector<std::vector<Bond>> vvBond;
+// If it doesn't work in the first case, use more of it.
+typedef std::vector<std::vector<std::vector<Bond>>> vvvBond;
 
-      return (bonds);
-    }
+// Given a vector of molecules, apply selection to each return a vector of
+// subsets
+vGroup splitSelection(const vGroup &molecules, const std::string &selection);
 
-    // Build up a vector of Bonds by looking for any donor/acceptor pair that's within a threshold
-    // distance
+// Select within a split vector, but retain empty atomic groups in result vector
+// to keep length of result the same as length of molecules, the split provided.
+vGroup splitSelectionKeepEmpties(const vGroup &molecules,
+                                 const std::string &selection);
 
-    vBond findPotentialBonds(const AtomicGroup &donors, const AtomicGroup &acceptors, const AtomicGroup &system, const hreal putative_threshold)
-    {
-      vBond bonds;
+// Build up a vector of Bonds from the passed groups alone
+vBond findPotentialBonds(const AtomicGroup &donors,
+                         const AtomicGroup &acceptors,
+                         const AtomicGroup &system,
+                         const bool use_periodicity = false);
 
-      for (AtomicGroup::const_iterator j = donors.begin(); j != donors.end(); ++j)
-      {
-        GCoord u = (*j)->coords();
-        for (AtomicGroup::const_iterator i = acceptors.begin(); i != acceptors.end(); ++i)
-        {
-          if (u.distance((*i)->coords()) <= putative_threshold)
-          {
+// Build up a vector of Bonds by looking for any donor/acceptor pair that's
+// within a threshold distance
 
-            // Manually build simple atoms
-            SimpleAtom new_donor(*j, system.sharedPeriodicBox(), use_periodicity);
-            string name = (*j)->name();
-            if (name[0] != 'H')
-            {
-              cerr << boost::format("Error- atom %s was given as a donor, but donors can only be hydrogens.\n") % name;
-              exit(-10);
-            }
+vBond findPotentialBonds(const AtomicGroup &donors,
+                         const AtomicGroup &acceptors,
+                         const AtomicGroup &system,
+                         const hreal putative_threshold,
+                         const bool use_periodicity = false);
 
-            vector<int> bond_list = (*j)->getBonds();
-            if (bond_list.size() != 1)
-            {
-              cerr << "Error- The following hydrogen atom has more than one bond to it...woops...\n";
-              cerr << *j;
-              exit(-10);
-            }
-
-            pAtom pa = system.findById(bond_list[0]);
-            if (pa == 0)
-            {
-              cerr << boost::format("Error- cannot find atomid %d in system.\n") % bond_list[0];
-              exit(-10);
-            }
-            new_donor.attach(pa);
-
-            SimpleAtom new_acceptor(*i, system.sharedPeriodicBox(), use_periodicity);
-
-            Bond new_bond(new_donor, new_acceptor);
-            bonds.push_back(new_bond);
-          }
-        }
-      }
-
-      return (bonds);
-    }
-
-    ostringstream &formatBond(ostringstream &oss, const uint i, const Bond &bond)
-    {
-      pAtom a = bond.first.rawAtom();
-      pAtom b = bond.second.rawAtom();
-
-      oss << boost::format("# %d : %d-%s-%s-%d-%s => %d-%s-%s-%d-%s") % i % a->id() % a->name() % a->resname() % a->resid() % a->segid() % b->id() % b->name() % b->resname() % b->resid() % b->segid();
-
-      return (oss);
-    }
-  } // namespace HBonds
+ostringstream &formatBond(ostringstream &oss, const uint i, const Bond &bond);
+} // namespace HBonds
 } // namespace loos
 #endif

@@ -105,10 +105,10 @@ class ToolOptions : public opts::OptionsPackage {
 public:
   void addGeneric(po::options_description& o) {
     o.add_options()
-      ("search", po::value<double>(&putative_threshold)->default_value(10.0), "Threshold for initial bond search")
-      ("blow", po::value<double>(&length_low)->default_value(1.5), "Low cutoff for bond length")
-      ("bhi", po::value<double>(&length_high)->default_value(3.0), "High cutoff for bond length")
-      ("angle", po::value<double>(&max_angle)->default_value(30.0), "Max bond angle deviation from linear")
+      ("search", po::value<hreal>(&putative_threshold)->default_value(10.0), "Threshold for initial bond search")
+      ("blow", po::value<hreal>(&length_low)->default_value(1.5), "Low cutoff for bond length")
+      ("bhi", po::value<hreal>(&length_high)->default_value(3.0), "High cutoff for bond length")
+      ("angle", po::value<hreal>(&max_angle)->default_value(30.0), "Max bond angle deviation from linear")
       ("periodic", po::value<bool>(&use_periodicity)->default_value(false), "Use periodic boundary")
       ("inter", po::value<bool>(&inter_bonds)->default_value(true), "Inter-molecular bonds")
       ("intra", po::value<bool>(&intra_bonds)->default_value(false), "Intra-molecular bonds");
