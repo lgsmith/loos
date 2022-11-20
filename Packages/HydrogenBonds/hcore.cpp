@@ -28,8 +28,8 @@
 
 #include "hcore.hpp"
 
-using namespace loos;
-using namespace HBonds;
+namespace loos {
+namespace HBonds {
 
 double SimpleAtom::inner = 0.0;
 double SimpleAtom::outer = 3.5;
@@ -208,7 +208,7 @@ SimpleAtom::findHydrogenBondsMatrix(const std::vector<SimpleAtom> &group,
 vBond findPotentialBonds(const AtomicGroup &donors,
                          const AtomicGroup &acceptors,
                          const AtomicGroup &system,
-                         const bool use_periodicity=false) {
+                         const bool use_periodicity) {
   vBond bonds;
 
   for (AtomicGroup::const_iterator j = donors.begin(); j != donors.end(); ++j) {
@@ -256,7 +256,7 @@ vBond findPotentialBonds(const AtomicGroup &donors,
                          const AtomicGroup &acceptors,
                          const AtomicGroup &system,
                          const hreal putative_threshold,
-                         const bool use_periodicity = false) {
+                         const bool use_periodicity) {
   vBond bonds;
 
   for (AtomicGroup::const_iterator j = donors.begin(); j != donors.end(); ++j) {
@@ -363,4 +363,5 @@ vGroup splitSelectionKeepEmpties(const vGroup &molecules,
 
   return (results);
 }
-
+} // namespace HBonds
+} // namespace loos
