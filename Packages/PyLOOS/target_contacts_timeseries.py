@@ -83,6 +83,7 @@ lo.parser.add_argument('--sigma',
                        default=6,
                        type=int,
                        help="exponent for the logistic contact")
+lo.parser.add_argument('target', help='Selection string to compute contacts with')
 lo.parser.add_argument('--radius',
                        default=5.0,
                        type=float,
@@ -109,6 +110,11 @@ if not args.include_h:
     chain = loos.selectAtoms(chain, '!hydrogen')
 
 residues = chain.splitByResidue()
+target_residues = loos.selectAtoms(system, args.target).splitByResidue()
+for i, res in enumerate(residues):
+    for j, tres in enumerate(target_residues):
+        if res[0].resid == tres[0].resid:
+            print('Warning, residue', i, 'from main selection and residue', j, 'from target share a resid')
 num_residues = len(residues)
 
 # if there's 1 trajectory, args.traj will be a string, otherwise
@@ -126,34 +132,30 @@ else:
                                    skip=args.skip, stride=args.stride)
         traj.append(t)
 
-num_pairs = len(residues) * (len(residues)-1) // 2
-contacts = numpy.zeros((len(traj), num_pairs), numpy.float)
+# num_pairs = len(residues) * (len(residues)-1) // 2
+contacts = numpy.zeros((len(traj), num_residues), numpy.float)
 
 default_box = loos.GCoord(10000., 10000., 10000.)
 frame_number = 0
-for frame in traj:
-    # checking each frame is wasteful, but shouldn't have a measurable
-    # effect on performance
-    if frame.isPeriodic():
-        box = frame.periodicBox()
-    else:
-        box = default_box
+# checking each frame is wasteful, but shouldn't have a measurable
+# effect on performance
+if traj[0].isPeriodic():
+    box = traj[0].periodicBox()
+else:
+    box = default_box
 
+for frame_number, frame in enumerate(traj):
     # compute residue-residue contacts and store
-    index = 0
-    for i in range(num_residues - 1):
-        r1 = residues[i]
-        for j in range(i+1, num_residues):
-            contact = r1.logisticContact(residues[j],
-                                         args.radius,
-                                         args.sigma,
-                                         box)
+    for index, qres in residues:
+        for tres in target_residues:
+            contact = qres.logisticContact(tres,
+                                           args.radius,
+                                           args.sigma,
+                                           box)
             # High contact -> low distance
             # However, since we're taking distances between structures, you
             # get pretty much the same answer either way.
-            contacts[frame_number, index] = 1. - contact
-            index += 1
-    frame_number += 1
+            contacts[frame_number, index] += 1. - contact
 
 
 dists = pdist(contacts, 'euclidean')
