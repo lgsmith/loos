@@ -112,6 +112,7 @@ set(loos_src_files
   ProgressCounters.cpp
   ProgressTriggers.cpp
   RnaSuite.cpp
+  TriclinicBox.cpp
   Selectors.cpp
   UniformWeight.cpp
   Weights.cpp

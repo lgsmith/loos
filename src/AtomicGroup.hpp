@@ -479,6 +479,15 @@ namespace loos
     //! Provide access to the underlying shared periodic box...
     loos::SharedPeriodicBox sharedPeriodicBox() const { return (box); }
 
+    //! Set a general triclinic periodic cell.
+    void periodicBox(const TriclinicBox& tb) { box.setTriclinicBox(tb); }
+
+    //! True if a triclinic (non-orthorhombic) cell has been set.
+    bool hasTriclinicBox() const { return (box.hasTriclinicBox()); }
+
+    //! Return the triclinic cell (only valid when hasTriclinicBox() is true).
+    const TriclinicBox& triclinicBox() const { return (box.triclinicBox()); }
+
     //! Remove periodicity
     void removePeriodicBox() { box = SharedPeriodicBox(); }
 

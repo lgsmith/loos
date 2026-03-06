@@ -37,6 +37,10 @@ namespace loos {
   template<class T> class Matrix44;
   template<class T> Coord<T> operator*(const Matrix44<T>&, const Coord<T>&);
 
+  // Forward declaration so TriclinicBox overloads can be inlined here without
+  // creating a circular include with PeriodicBox.hpp.
+  class TriclinicBox;
+
 
   //! Basic 3-D coordinates class.
   /**
@@ -418,13 +422,18 @@ namespace loos {
     //-----------------------------
     // Misc
 
-    //! Handle coordinates with periodic boundary conditions.
+    //! Handle coordinates with periodic boundary conditions (orthorhombic).
     void reimage(const Coord<T>& box) {
       for (uint i=0; i<MAXCOORD; ++i) {
         int n = (int)(fabs(v[i]) / box.v[i] + 0.5);
         v[i] = (v[i] >= 0) ? v[i] - n*(box.v[i]) : v[i] + n*(box.v[i]);
       }
     }
+
+    //! Reimage into the primary cell of a general triclinic unit cell.
+    //! Uses the fractional coordinate approach; works for orthorhombic,
+    //! rhombic dodecahedron, truncated octahedron, and any parallelotope cell.
+    void reimage(const TriclinicBox& cell);
 
 
     //! Length of the Coord (as a vector) squared
@@ -466,6 +475,18 @@ namespace loos {
     //! conditions
     double distance(const Coord<T>& o, const Coord<T>& box) const {
       return(sqrt(distance2(o, box)));
+    }
+
+    //! Distance squared between two coordinates in a general triclinic cell
+    double distance2(const Coord<T>& o, const TriclinicBox& cell) const {
+      Coord<T> d = o - *this;
+      d.reimage(cell);
+      return(d.length2());
+    }
+
+    //! Distance between two coordinates in a general triclinic cell
+    double distance(const Coord<T>& o, const TriclinicBox& cell) const {
+      return(sqrt(distance2(o, cell)));
     }
 
     //! Generate a random vector on a unit sphere

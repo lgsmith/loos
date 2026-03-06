@@ -217,8 +217,13 @@ namespace loos {
 
 			if (hdr_.box_size) {
 				readBlock<T>(box_, DIM*DIM, "box");
-				box = GCoord(box_[0], box_[4], box_[8]) * 10.0;   // Convert
-				// to angstroms
+				box = GCoord(box_[0], box_[4], box_[8]) * 10.0;  // diagonal, Angstrom
+				// Build full triclinic cell (nm -> Angstrom).
+				// box_ stores row-major: rows are the a, b, c lattice vectors.
+				float raw[9];
+				for (int _i = 0; _i < 9; ++_i)
+					raw[_i] = static_cast<float>(box_[_i]);
+				triclinic_box = TriclinicBox(raw, 10.0);
 			}
 
 			if (hdr_.vir_size)
@@ -251,6 +256,7 @@ namespace loos {
 		internal::XDRReader xdr_file;
 		std::vector<GCoord> coords_;
 		GCoord box;
+		TriclinicBox triclinic_box{GCoord(1,1,1)};  // updated each frame
 		std::vector<size_t> frame_indices;   // Index into file for start
 		// of frame header
 

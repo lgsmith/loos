@@ -918,7 +918,10 @@ namespace loos {
       throw(LOOSError("trying to reimage a non-periodic group"));
     GCoord com = centroid();
     GCoord reimaged = com;
-    reimaged.reimage(periodicBox());
+    if (hasTriclinicBox())
+      triclinicBox().reimage(reimaged);
+    else
+      reimaged.reimage(periodicBox());
     GCoord trans = reimaged - com;
     const_iterator a;
     for (a=atoms.begin(); a!=atoms.end(); a++) {
@@ -930,9 +933,18 @@ namespace loos {
     if (!(isPeriodic()))
       throw(LOOSError("trying to reimage a non-periodic group"));
     const_iterator a;
-    GCoord box = periodicBox();
-    for (a=atoms.begin(); a!=atoms.end(); a++) {
-      (*a)->coords().reimage(box);
+    if (hasTriclinicBox()) {
+      const TriclinicBox& cell = triclinicBox();
+      for (a=atoms.begin(); a!=atoms.end(); a++) {
+        GCoord c = (*a)->coords();
+        cell.reimage(c);
+        (*a)->coords(c);
+      }
+    } else {
+      GCoord b = periodicBox();
+      for (a=atoms.begin(); a!=atoms.end(); a++) {
+        (*a)->coords().reimage(b);
+      }
     }
   }
 

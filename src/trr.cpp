@@ -167,8 +167,12 @@ namespace loos {
 			(*i)->coords(coords_[idx]);
 		}
 
-		if (hdr_.box_size)
-			g.periodicBox(box);
+		if (hdr_.box_size) {
+			if (triclinic_box.isOrthorhombic())
+				g.periodicBox(box);
+			else
+				g.periodicBox(triclinic_box);
+		}
 	}
 
 	void TRR::updateGroupVelocitiesImpl(AtomicGroup& g) {

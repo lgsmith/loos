@@ -366,8 +366,12 @@ namespace loos {
       (*i)->coords(coords_[idx]);
     }
     
-    // XTC files *always* have a periodic box...
-    g.periodicBox(box);
+    // XTC files *always* have a periodic box.
+    // Set the full triclinic cell so reimaging works for non-orthorhombic boxes.
+    if (triclinic_box.isOrthorhombic())
+      g.periodicBox(box);
+    else
+      g.periodicBox(triclinic_box);
   }
 
 
@@ -382,9 +386,12 @@ namespace loos {
     if (!readFrameHeader(current_header_))
       return(false);
     
-    box = GCoord(current_header_.box[0], 
-		 current_header_.box[4], 
-		 current_header_.box[8]) * 10.0; // Convert to Angstroms
+    // Build the full triclinic cell from all 9 box elements (nm -> Angstrom).
+    triclinic_box = TriclinicBox(current_header_.box, 10.0);
+    // Keep diagonal GCoord for backward-compatible callers of periodicBox().
+    box = GCoord(current_header_.box[0],
+                 current_header_.box[4],
+                 current_header_.box[8]) * 10.0;
     if (natoms_ <= min_compressed_system_size)
 	return(readUncompressedCoords());
     else

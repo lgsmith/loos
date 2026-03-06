@@ -124,6 +124,7 @@ namespace loos {
     std::vector<size_t> frame_indices;
     uint natoms_;
     GCoord box;
+    TriclinicBox triclinic_box{GCoord(1,1,1)};  // updated each frame
     double precision_;
     std::vector<GCoord> coords_;
     double timestep_;
