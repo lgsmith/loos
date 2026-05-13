@@ -11,12 +11,13 @@ import copy
 # a loos::Trajectory.  The behavior of the trajectory can be controlled
 # through passed keywords,
 #
-# Keyword    | Description
-# -----------|------------------------------------------------------------------------------
-# skip=n     | Skip the first n-frames of the wrapped trajectory
-# stride=n   | Step through the wrapped trajectory n-frames at a time
-# iterator=i | Use the python iterator object i to select frames from the wrapped trajectory
-# subset=s   | Use 's' to select a subset of the model to use for each frame
+# Keyword       | Description
+# --------------|------------------------------------------------------------------------------
+# skip=n        | Skip the first n-frames of the wrapped trajectory
+# stride=n      | Step through the wrapped trajectory n-frames at a time
+# iterator=i    | Use the python iterator object i to select frames from the wrapped trajectory
+# subset=s      | Use 's' to select a subset of the model to use for each frame
+# update_full=b | If False, only update coords for the subset each frame (faster, but other selections from the model won't see updates).  Default True.
 #
 # Remember that all atoms are shared.  If you want to decouple the
 # trajectory from other groups, pass it a copy of the model.
@@ -59,10 +60,11 @@ class Trajectory(object):
     >>> traj = loos.pyloos.Trajectory('foo.dcd', model)
 
     keyword args:
-        skip = # of frames to skip from start
-      stride = # of frames to step through
-    iterator = Python iterator used to pick frame (overrides skip and stride)
-      subset = Selection used to pick subset for each frame
+         skip = # of frames to skip from start
+       stride = # of frames to step through
+     iterator = Python iterator used to pick frame (overrides skip and stride)
+       subset = Selection used to pick subset for each frame
+  update_full = If False, only update subset coords each frame (default True)
 
     See the Doxygen documentation for more details.
     """
@@ -73,6 +75,7 @@ class Trajectory(object):
         self._skip = 0
         self._stride = 1
         self._iterator = None
+        self._update_full = kwargs.get('update_full', True)
 
         if 'skip' in kwargs:
             self._skip = kwargs['skip']
@@ -88,6 +91,11 @@ class Trajectory(object):
         self._model = model
         self._fname = fname
         self._traj = loos.createTrajectory(fname, model)
+
+        if self._update_full:
+            self._target = self._model
+        else:
+            self._target = self._subset
 
         self._stale = 1
         self._initFrameList()
@@ -130,6 +138,8 @@ class Trajectory(object):
         The selection is a LOOS selection string.
         """
         self._subset = loos.selectAtoms(self._model, selection)
+        if not self._update_full:
+            self._target = self._subset
 
 
     def __iter__(self):
@@ -182,7 +192,7 @@ class Trajectory(object):
         if (i < 0 or i >= len(self._framelist)):
             raise IndexError
         self._traj.readFrame(self._framelist[i])
-        self._traj.updateGroupCoords(self._model)
+        self._traj.updateGroupCoords(self._target)
         return(self._subset)
 
     def frame(self):
@@ -232,7 +242,7 @@ class Trajectory(object):
         ensemble = []
         for i in indices:
             self._traj.readFrame(self._framelist[i])
-            self._traj.updateGroupCoords(self._model)
+            self._traj.updateGroupCoords(self._target)
             dup = self._subset.copy()
             ensemble.append(dup)
         return(ensemble)
@@ -251,7 +261,7 @@ class Trajectory(object):
         if (i >= len(self._framelist) or i < 0):
             raise IndexError
         self._traj.readFrame(self._framelist[i])
-        self._traj.updateGroupCoords(self._model)
+        self._traj.updateGroupCoords(self._target)
         return(self._subset)
 
 
