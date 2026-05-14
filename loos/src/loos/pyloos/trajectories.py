@@ -2,6 +2,7 @@
 Python-based trajectory classes that wrap loos.Trajectory objects
 
 """
+import sys
 import loos
 import copy
 
@@ -96,7 +97,13 @@ class Trajectory(object):
             self._target = self._model
         else:
             self._target = self._subset
+            sys.stderr.write(
+                "Warning- pyloos.Trajectory: update_full=False means the model "
+                "you instantiated the trajectory object with will go stale; "
+                "use traj_object.refreshModel() to update it explicitly.\n"
+            )
 
+        self._model_dirty = False
         self._stale = 1
         self._initFrameList()
 
@@ -193,7 +200,22 @@ class Trajectory(object):
             raise IndexError
         self._traj.readFrame(self._framelist[i])
         self._traj.updateGroupCoords(self._target)
+        if not self._update_full:
+            self._model_dirty = True
         return(self._subset)
+
+
+    def refreshModel(self):
+        """
+        Update the full model's coordinates from the trajectory's current frame.
+        Only relevant in update_full=False mode, where the per-frame update
+        touches only the subset.  No-op if the model is already current.
+        Returns the model AtomicGroup.
+        """
+        if self._model_dirty:
+            self._traj.updateGroupCoords(self._model)
+            self._model_dirty = False
+        return(self._model)
 
     def frame(self):
         """Return the current frame (subset)"""
@@ -245,6 +267,8 @@ class Trajectory(object):
             self._traj.updateGroupCoords(self._target)
             dup = self._subset.copy()
             ensemble.append(dup)
+        if not self._update_full and indices:
+            self._model_dirty = True
         return(ensemble)
 
 
@@ -262,6 +286,8 @@ class Trajectory(object):
             raise IndexError
         self._traj.readFrame(self._framelist[i])
         self._traj.updateGroupCoords(self._target)
+        if not self._update_full:
+            self._model_dirty = True
         return(self._subset)
 
 
