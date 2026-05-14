@@ -51,8 +51,8 @@ namespace loos {
                 std::string res_entity_id = residue.entity_id;
                 for (auto atom:residue.atoms) {
                     loos::pAtom pa(new loos::Atom);
-                    pa->index(atom.serial);
-                    pa->id(atom_index);
+                    pa->index(atom_index);
+                    pa->id(atom.serial);  // from gemmi, comes from _atom_site.id in CIF records.
                     pa->name(atom.name);
                     pa->PDBelement(atom.element.name());
                     pa->coords().x(atom.pos.x);
