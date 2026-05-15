@@ -119,8 +119,9 @@ echo "*** Configuring LOOS ***"
 cmake -DCMAKE_INSTALL_PREFIX=${CONDA_PREFIX} ..
 
 echo "*** Building LOOS ***"
-if ! cmake --build . -j${numprocs} ; then
-    echo "*** LOOS build failed; skipping install ***"
+set -o pipefail
+if ! cmake --build . -j${numprocs} 2>&1 | tee build.log ; then
+    echo "*** LOOS build failed; full output in build/build.log ***"
     exit 1
 fi
 
