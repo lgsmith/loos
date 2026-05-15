@@ -77,6 +77,7 @@ class Trajectory(object):
         self._stride = 1
         self._iterator = None
         self._update_full = kwargs.get('update_full', True)
+        self._suppress_update_full_warning = kwargs.get('suppress_update_full_warning', False)
 
         if 'skip' in kwargs:
             self._skip = kwargs['skip']
@@ -97,11 +98,12 @@ class Trajectory(object):
             self._target = self._model
         else:
             self._target = self._subset
-            sys.stderr.write(
-                "Warning- pyloos.Trajectory: update_full=False means the model "
-                "you instantiated the trajectory object with will go stale; "
-                "use traj_object.refreshModel() to update it explicitly.\n"
-            )
+            if not self._suppress_update_full_warning:
+                sys.stderr.write(
+                    "Warning- pyloos.Trajectory: update_full=False means the model "
+                    "you instantiated the trajectory object with will go stale; "
+                    "use traj_object.refreshModel() to update it explicitly.\n"
+                )
 
         self._model_dirty = False
         self._stale = 1
